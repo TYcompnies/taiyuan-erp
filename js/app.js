@@ -8,6 +8,84 @@ const h = (v) => Utils.esc(v);
 const fmt = (v, cur) => Utils.money(v, cur);
 const curSymbol = (code) => { const c = DB.currencyByCode(code); return c ? c.symbol + " " : ""; };
 
+/* ---------------- 人民币金额大写（大陆单据用） ---------------- */
+function rmbUpper(n) {
+    const num = Utils.num(n);
+    if (num === 0) return "零元整";
+    const neg = num < 0;
+    const abs = Math.abs(num);
+    const cn = ["零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"];
+    const unit = ["", "拾", "佰", "仟"];
+    const big = ["", "万", "亿", "万亿"];
+    let s = "";
+    const groups = [];
+    let x = Math.floor(abs);
+    if (x === 0) s = "零";
+    while (x > 0) { groups.unshift(x % 10000); x = Math.floor(x / 10000); }
+    let needZero = false;
+    for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        if (g === 0) { needZero = true; continue; }
+        const str = String(g).padStart(4, "0");
+        let gs = "", zf = false;
+        for (let i = 0; i < 4; i++) {
+            const d = parseInt(str[i], 10);
+            if (d === 0) { zf = true; }
+            else {
+                if (zf && (gs !== "" || s !== "")) gs += "零";
+                gs += cn[d] + unit[3 - i];
+                zf = false;
+            }
+        }
+        if (needZero) s += "零";
+        s += gs + big[groups.length - 1 - gi];
+        needZero = false;
+    }
+    const dec = Math.round((abs - Math.floor(abs)) * 100);
+    const jiao = Math.floor(dec / 10), fen = dec % 10;
+    let r = s + "元";
+    if (jiao === 0 && fen === 0) r += "整";
+    else {
+        if (jiao > 0) r += cn[jiao] + "角";
+        else if (fen > 0) r += "零";
+        if (fen > 0) r += cn[fen] + "分";
+    }
+    return (neg ? "负" : "") + r;
+}
+
+/* ---------------- 单据打印（大陆 A4 格式） ---------------- */
+const PRINT_CSS = `
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:"Microsoft YaHei","PingFang SC","SimSun",sans-serif; color:#111; background:#fff; padding:34px 40px; }
+    .doc-head { text-align:center; }
+    .doc-head .company { font-size:19px; font-weight:700; letter-spacing:3px; }
+    .doc-head .en { font-size:10.5px; color:#666; letter-spacing:1.5px; margin-top:2px; }
+    .doc-title { text-align:center; font-size:21px; font-weight:700; letter-spacing:12px; margin:10px 0 14px; padding-bottom:8px; border-bottom:2.5px solid #111; }
+    .meta { display:flex; flex-wrap:wrap; row-gap:5px; column-gap:28px; font-size:12.5px; margin-bottom:10px; line-height:1.7; }
+    .meta b { font-weight:600; }
+    table { width:100%; border-collapse:collapse; font-size:12.5px; }
+    th, td { border:1px solid #111; padding:5px 7px; }
+    th { background:#f2f2f2; font-weight:600; text-align:center; }
+    td.c, th.c { text-align:center; }
+    td.r, th.r { text-align:right; }
+    .totals { margin-top:12px; font-size:13px; line-height:2; }
+    .totals .up { font-weight:700; }
+    .remark { margin-top:8px; font-size:12px; min-height:20px; }
+    .sign { margin-top:32px; display:flex; justify-content:space-between; font-size:12.5px; }
+    .sign div { width:31%; }
+    .sign .line { border-bottom:1px solid #111; height:26px; margin-bottom:3px; }
+    .foot-note { margin-top:24px; text-align:center; font-size:10px; color:#888; }
+    @page { size:A4; margin:10mm; }
+    @media print { body { padding:0; } }
+`;
+
+function printDoc(title, bodyHtml) {
+    const w = window.open("", "_blank", "width=900,height=1150");
+    if (!w) { toast("浏览器拦截了打印窗口，请允许弹出窗口后重试", "error"); return; }
+    w.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${h(title)}</title><style>${PRINT_CSS}</style></head><body>${bodyHtml}<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});<\/script></body></html>`);
+    w.document.close();
+}
+
 /* ---------------- 权限检查 ---------------- */
 function can(perm) {
     const u = DB.currentUser();
@@ -347,7 +425,7 @@ function renderDashboard() {
 
     const pendingShipHtml = pendingShip.slice(0, 6).map(o => {
         const cu = DB.get("customers", o.customer_id);
-        return `<a href="#/sales-orders/${o.id}/edit"><b>${h(o.no)}</b><span>${h(cu ? cu.name : "")}</span><em>${fmt(o.invoice_amount)}</em></a>`;
+        return `<a href="#/sales-orders/${o.id}"><b>${h(o.no)}</b><span>${h(cu ? cu.name : "")}</span><em>${fmt(o.invoice_amount)}</em></a>`;
     }).join("") || `<p class="empty" style="padding:14px 18px;color:var(--muted);font-size:12.5px">没有待出货订单</p>`;
 
     const pendingReceiveHtml = pendingReceive.slice(0, 6).map(o => {
@@ -596,6 +674,11 @@ function route(hash) {
             const perm = permForPath("shipments");
             if (perm && !can(perm)) { denyAccess("shipments"); return; }
             Pages.shipmentDetail(id); return;
+        }
+        if (p[0] === "sales-orders") {
+            const perm = permForPath("sales-orders");
+            if (perm && !can(perm)) { denyAccess("sales-orders"); return; }
+            Pages.salesOrderDetail(id); return;
         }
     }
     toast("找不到该页面，已回到首页", "error");

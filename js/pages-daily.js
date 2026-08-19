@@ -88,7 +88,7 @@ Pages.salesOrders = function () {
         const shipRow = DB.find("shipments", s => s.sales_order_id === o.id);
         const shipDate = shipRow ? shipRow.ship_date : "-";
         return `<tr>
-            <td><a href="#/sales-orders/${o.id}/edit"><b>${h(o.no)}</b></a></td>
+            <td><a href="#/sales-orders/${o.id}"><b>${h(o.no)}</b></a></td>
             <td>${h(o.order_date)}</td>
             <td><span class="badge gray">${h(o.channel)}</span></td>
             <td>${h(cu ? cu.name : "")}</td>
@@ -102,7 +102,9 @@ Pages.salesOrders = function () {
             <td>${h(o.logistics_method || "-")}</td>
             <td>${o.invoice_status ? badge(o.invoice_status) : '-'}</td>
             <td class="action-col">
+                <a class="link-btn" href="#/sales-orders/${o.id}">查看</a>
                 <a class="link-btn" href="#/sales-orders/${o.id}/edit">编辑</a>
+                <button class="link-btn" onclick="Pages.printSalesOrder('${o.id}')">打印</button>
                 ${o.status === "draft" && can("sales.ship") ? `<button class="link-btn" onclick="Pages.shipOrder('${o.id}')">出货</button>` : ""}
                 <button class="link-btn danger" onclick="Pages.deleteSalesOrder('${o.id}')">删除</button>
             </td>
@@ -156,7 +158,7 @@ Pages.soSearch = function () {
     body.innerHTML = rows.map(o => {
         const cu = DB.get("customers", o.customer_id);
         return `<tr>
-            <td><a href="#/sales-orders/${o.id}/edit"><b>${h(o.no)}</b></a></td>
+            <td><a href="#/sales-orders/${o.id}"><b>${h(o.no)}</b></a></td>
             <td>${h(o.order_date)}</td>
             <td><span class="badge gray">${h(o.channel)}</span></td>
             <td>${h(cu ? cu.name : "")}</td>
@@ -170,7 +172,9 @@ Pages.soSearch = function () {
             <td>${h(o.logistics_method || "-")}</td>
             <td>${o.invoice_status ? badge(o.invoice_status) : '-'}</td>
             <td class="action-col">
+                <a class="link-btn" href="#/sales-orders/${o.id}">查看</a>
                 <a class="link-btn" href="#/sales-orders/${o.id}/edit">编辑</a>
+                <button class="link-btn" onclick="Pages.printSalesOrder('${o.id}')">打印</button>
                 ${o.status === "draft" && can("sales.ship") ? `<button class="link-btn" onclick="Pages.shipOrder('${o.id}')">出货</button>` : ""}
                 <button class="link-btn danger" onclick="Pages.deleteSalesOrder('${o.id}')">删除</button>
             </td>
@@ -187,6 +191,162 @@ Pages.deleteSalesOrder = function (id) {
         toast("销货订单已删除", "success");
         render();
     });
+};
+
+/* ---- 销货订单查看（只读详情） ---- */
+Pages.salesOrderDetail = function (id) {
+    const o = DB.get("sales_orders", id);
+    if (!o) { toast("找不到该销货订单", "error"); render(); return; }
+    const cu = DB.get("customers", o.customer_id);
+    const shipRow = DB.find("shipments", s => s.sales_order_id === o.id);
+    const wh = shipRow ? DB.get("warehouses", shipRow.warehouse_id) : null;
+    const goods = o.lines.reduce((s, l) => s + Utils.num(l.amount), 0);
+    const fees = Utils.num(o.shipping_fee) + Utils.num(o.platform_fee) + Utils.num(o.payment_fee) + Utils.num(o.other_fee);
+
+    const content = `
+    <div class="page-head">
+        <div><h1>销货订单｜${h(o.no)}</h1>
+        <p>订单日期 ${h(o.order_date)} ｜ ${h(o.channel)}${o.platform_no ? ` ｜ 平台单号 ${h(o.platform_no)}` : ""} ｜ ${o.status === "shipped" ? "已出货" : "未出货"}</p></div>
+        <div class="head-actions">
+            <button class="btn" onclick="Pages.printSalesOrder('${o.id}')">🖨 打印</button>
+            <a class="btn ghost" href="#/sales-orders/${o.id}/edit">编辑</a>
+            <a class="btn" href="#/sales-orders">返回列表</a>
+        </div>
+    </div>
+    <div class="doc-audit">
+        <div><span>客户</span><strong>${h(cu ? cu.name : "-")}</strong></div>
+        <div><span>收件人</span><strong>${h(o.recipient_name || (cu ? cu.name : "") || "-")}</strong></div>
+        <div><span>联系电话</span><strong>${h(o.recipient_phone || "-")}</strong></div>
+        <div><span>收件地址</span><strong>${h(o.shipping_address || "-")}</strong></div>
+        <div><span>业务员</span><strong>${h(o.sales_owner || "-")}</strong></div>
+        <div><span>物流方式</span><strong>${h(o.logistics_method || "-")}</strong></div>
+        <div><span>物流单号</span><strong>${h(o.shipment_no || "-")}</strong></div>
+        <div><span>收款状态</span><strong>${o.payment_status === "paid" ? badge("已收款") : badge("未收款")}</strong></div>
+        <div><span>发票状态</span><strong>${o.invoice_status ? badge(o.invoice_status) : '-'}</strong></div>
+    </div>
+    <div class="table-wrap list-scroll">
+        <table class="table">
+            <thead><tr><th>品号</th><th>品名</th><th class="num">数量</th><th>单位</th><th class="num">单价</th><th class="num">金额</th><th>备注</th></tr></thead>
+            <tbody>${o.lines.map(l => `<tr>
+                <td>${h(l.code)}</td><td>${h(l.name)}</td>
+                <td class="num">${l.qty}</td><td>${h(l.unit)}</td>
+                <td class="num">${fmt(l.unit_price)}</td><td class="num">${fmt(l.amount)}</td>
+                <td>${h(l.remark || "")}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+    </div>
+    <div class="order-summary-bar" style="margin-top:16px">
+        <div><span>商品小计</span><strong>${fmt(goods)}</strong></div>
+        <div><span>销售费用</span><strong>${fmt(fees)}</strong></div>
+        <div><span>税额</span><strong>${fmt(o.tax_amount)}</strong></div>
+        <div><span>应收总额</span><strong>${fmt(o.invoice_amount)}</strong></div>
+        <div><span>预估实收</span><strong>${fmt(o.net_receipt)}</strong></div>
+    </div>
+    ${shipRow ? `<div class="doc-flow-card" style="margin-top:16px">
+        <div><span class="doc-flow-label">出货信息</span>
+        <strong>出货单 <a href="#/shipments/${shipRow.id}">${h(shipRow.no)}</a> ｜ ${h(shipRow.ship_date)} ｜ ${h(wh ? wh.name : "")}</strong>
+        <p>${h(shipRow.logistics_method || "")}${shipRow.shipment_no ? ` ｜ 物流单号 ${h(shipRow.shipment_no)}` : ""}</p></div>
+    </div>` : ""}
+    ${o.remark ? `<p class="stat-line" style="margin-top:12px">备注：${h(o.remark)}</p>` : ""}`;
+    renderShell("sales_orders", content, "首页 / 日常作业 / 销货订单 / " + o.no);
+};
+
+/* ---- 销货订单打印（大陆格式） ---- */
+Pages.printSalesOrder = function (id) {
+    const o = DB.get("sales_orders", id);
+    if (!o) { toast("找不到该销货订单", "error"); return; }
+    const cu = DB.get("customers", o.customer_id);
+    const goods = o.lines.reduce((s, l) => s + Utils.num(l.amount), 0);
+    const lines = o.lines.map((l, i) => {
+        const it = DB.get("items", l.item_id);
+        return `<tr><td class="c">${i + 1}</td><td>${h(l.code)}</td><td>${h(l.name)}</td><td>${h(it ? it.spec : "")}</td><td class="c">${l.qty}</td><td class="c">${h(l.unit)}</td><td class="r">${fmt(l.unit_price)}</td><td class="r">${fmt(l.amount)}</td></tr>`;
+    }).join("");
+    const body = `
+    <div class="doc-head">
+        <div class="company">${h(COMPANY.name)}</div>
+        <div class="en">${h(COMPANY.en)}</div>
+    </div>
+    <div class="doc-title">销 货 订 单</div>
+    <div class="meta">
+        <span>单据编号：<b>${h(o.no)}</b></span>
+        <span>订单日期：<b>${h(o.order_date)}</b></span>
+        <span>预计出货：<b>${h(o.delivery_date || "-")}</b></span>
+        <span>销售来源：<b>${h(o.channel)}</b></span>
+        <span>平台单号：<b>${h(o.platform_no || "-")}</b></span>
+        <span>业务员：<b>${h(o.sales_owner || "-")}</b></span>
+    </div>
+    <div class="meta">
+        <span>客户名称：<b>${h(cu ? cu.name : "-")}</b></span>
+        <span>联系电话：<b>${h(o.recipient_phone || (cu ? cu.phone : "") || "-")}</b></span>
+        <span>物流方式：<b>${h(o.logistics_method || "-")}</b></span>
+    </div>
+    <div class="meta"><span>收件地址：<b>${h(o.shipping_address || (cu ? cu.address : "") || "-")}</b></span></div>
+    <table>
+        <thead><tr><th style="width:36px">序号</th><th style="width:104px">品号</th><th>品名</th><th style="width:84px">规格</th><th style="width:56px">数量</th><th style="width:52px">单位</th><th style="width:88px">单价</th><th style="width:98px">金额</th></tr></thead>
+        <tbody>${lines}</tbody>
+    </table>
+    <div class="totals">
+        <div>商品小计：<b>¥${fmt(goods)}</b>　运费：¥${fmt(o.shipping_fee)}　平台手续费：¥${fmt(o.platform_fee)}　金流手续费：¥${fmt(o.payment_fee)}　其他费用：¥${fmt(o.other_fee)}</div>
+        <div>未税销售额：¥${fmt(o.taxable_amount)}　税额：¥${fmt(o.tax_amount)}　预估实收：¥${fmt(o.net_receipt)}　收款状态：${o.payment_status === "paid" ? "已收款" : "未收款"}</div>
+        <div>应收总额：<b>¥${fmt(o.invoice_amount)}</b></div>
+        <div class="up">金额大写（人民币）：${rmbUpper(o.invoice_amount)}</div>
+    </div>
+    <div class="remark">备注：${h(o.remark || "")}</div>
+    <div class="sign">
+        <div><div class="line"></div>制单人：${h(DB.currentUser() ? DB.currentUser().name : "")}</div>
+        <div><div class="line"></div>审核人：</div>
+        <div><div class="line"></div>打印日期：${Utils.today()}</div>
+    </div>
+    <div class="foot-note">本单据由 ${h(COMPANY.name)} ERP 系统自动生成，仅用于业务对账参考</div>`;
+    printDoc("销货订单 " + o.no, body);
+};
+
+/* ---- 出货单打印（大陆送货单格式） ---- */
+Pages.printShipment = function (id) {
+    const s = DB.get("shipments", id);
+    if (!s) { toast("找不到该出货单", "error"); return; }
+    const wh = DB.get("warehouses", s.warehouse_id);
+    const goods = s.lines.reduce((a, l) => a + Utils.num(l.amount), 0);
+    const totalQty = s.lines.reduce((a, l) => a + Utils.num(l.qty), 0);
+    const lines = s.lines.map((l, i) => {
+        const it = DB.get("items", l.item_id);
+        return `<tr><td class="c">${i + 1}</td><td>${h(l.code)}</td><td>${h(l.name)}</td><td>${h(it ? it.spec : "")}</td><td class="c">${l.qty}</td><td class="c">${h(l.unit)}</td><td class="r">${fmt(l.unit_price)}</td><td class="r">${fmt(l.amount)}</td></tr>`;
+    }).join("");
+    const body = `
+    <div class="doc-head">
+        <div class="company">${h(COMPANY.name)}</div>
+        <div class="en">${h(COMPANY.en)}</div>
+    </div>
+    <div class="doc-title">出 货 单</div>
+    <div class="meta">
+        <span>出货单号：<b>${h(s.no)}</b></span>
+        <span>出货日期：<b>${h(s.ship_date)}</b></span>
+        <span>对应订单：<b>${h(s.order_no)}</b></span>
+        <span>出货仓库：<b>${h(wh ? wh.name : "-")}</b></span>
+        <span>物流方式：<b>${h(s.logistics_method || "-")}</b></span>
+        <span>物流单号：<b>${h(s.shipment_no || "-")}</b></span>
+    </div>
+    <div class="meta">
+        <span>收货单位：<b>${h(s.recipient_name || "-")}</b></span>
+        <span>联系电话：<b>${h(s.recipient_phone || "-")}</b></span>
+    </div>
+    <div class="meta"><span>收货地址：<b>${h(s.shipping_address || "-")}</b></span></div>
+    <table>
+        <thead><tr><th style="width:36px">序号</th><th style="width:104px">品号</th><th>品名</th><th style="width:84px">规格</th><th style="width:56px">数量</th><th style="width:52px">单位</th><th style="width:88px">单价</th><th style="width:98px">金额</th></tr></thead>
+        <tbody>${lines}</tbody>
+    </table>
+    <div class="totals">
+        <div>合计数量：<b>${totalQty}</b>　合计金额：<b>¥${fmt(goods)}</b></div>
+        <div class="up">金额大写（人民币）：${rmbUpper(goods)}</div>
+    </div>
+    <div class="remark">备注：${h(s.remark || "")}</div>
+    <div class="sign">
+        <div><div class="line"></div>制单人：${h(s.created_by || "")}</div>
+        <div><div class="line"></div>收货单位（签收）：</div>
+        <div><div class="line"></div>签收日期：</div>
+    </div>
+    <div class="foot-note">本单据由 ${h(COMPANY.name)} ERP 系统自动生成，请核对商品数量与金额无误后签收</div>`;
+    printDoc("出货单 " + s.no, body);
 };
 
 /* ---- 出货扣库存 ---- */
@@ -606,7 +766,7 @@ Pages.shipments = function () {
         const o = DB.get("sales_orders", s.sales_order_id);
         return `<tr>
             <td><a href="#/shipments/${s.id}"><b>${h(s.no)}</b></a></td>
-            <td><a href="#/sales-orders/${s.sales_order_id}/edit">${h(s.order_no)}</a></td>
+            <td><a href="#/sales-orders/${s.sales_order_id}">${h(s.order_no)}</a></td>
             <td>${h(s.ship_date)}</td>
             <td>${h(wh ? wh.name : "")}</td>
             <td>${h(s.recipient_name || "-")}</td>
@@ -615,6 +775,10 @@ Pages.shipments = function () {
             <td class="num">${fmt(goods)}</td>
             <td>${o ? soStatusBadge(o.status) : badge("已出货")}</td>
             <td>${h(s.created_by)}</td>
+            <td class="action-col">
+                <a class="link-btn" href="#/shipments/${s.id}">查看</a>
+                <button class="link-btn" onclick="Pages.printShipment('${s.id}')">打印</button>
+            </td>
         </tr>`;
     }).join("");
 
@@ -625,8 +789,8 @@ Pages.shipments = function () {
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
-            <thead><tr><th>出货单号</th><th>订单单号</th><th>出货日期</th><th>出货仓库</th><th>收件人</th><th>物流</th><th class="num">品项数</th><th class="num">出货金额</th><th>状态</th><th>建立人</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="10"><div class="empty-state"><div class="big">📭</div>暂无出货记录</div></td></tr>`}</tbody>
+            <thead><tr><th>出货单号</th><th>订单单号</th><th>出货日期</th><th>出货仓库</th><th>收件人</th><th>物流</th><th class="num">品项数</th><th class="num">出货金额</th><th>状态</th><th>建立人</th><th class="action-col">操作</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="11"><div class="empty-state"><div class="big">📭</div>暂无出货记录</div></td></tr>`}</tbody>
         </table>
     </div>
     <p class="stat-line">共 ${list.length} 笔出货单</p>`;
@@ -645,9 +809,10 @@ Pages.shipmentDetail = function (id) {
     <div class="page-head">
         <div><h1>出货单｜${h(s.no)}</h1>
         <p>出货日期 ${h(s.ship_date)} ｜ ${h(wh ? wh.name : "")} ｜ ${h(s.logistics_method || "-")}${s.shipment_no ? ` ｜ 物流单号 ${h(s.shipment_no)}` : ""}</p></div>
-        <div class="actions">
+        <div class="head-actions">
+            <button class="btn" onclick="Pages.printShipment('${s.id}')">🖨 打印</button>
+            <a class="btn ghost" href="#/sales-orders/${s.sales_order_id}">查看来源订单 ${h(s.order_no)}</a>
             <a class="btn" href="#/shipments">返回出货单</a>
-            <a class="btn ghost" href="#/sales-orders/${s.sales_order_id}/edit">查看来源订单 ${h(s.order_no)}</a>
         </div>
     </div>
     <div class="doc-audit">
@@ -1116,7 +1281,7 @@ Pages.salesReturns = function () {
         return `<tr>
             <td><b>${h(r.no)}</b></td>
             <td>${h(r.return_date)}</td>
-            <td><a href="#/sales-orders/${r.sales_order_id}/edit">${h(r.order_no)}</a></td>
+            <td><a href="#/sales-orders/${r.sales_order_id}">${h(r.order_no)}</a></td>
             <td>${h(cu ? cu.name : "")}</td>
             <td><span class="badge ${r.type === "退回" ? "red" : "purple"}">${h(r.type)}</span></td>
             <td>${h(wh ? wh.name : "")}</td>
