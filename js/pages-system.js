@@ -432,7 +432,7 @@ Pages.userForm = function (id) {
         <div><h2>用户管理｜${isEdit ? "编辑" : "新增"}</h2></div>
         <div class="actions"><a class="btn" href="#/users">返回用户管理</a></div>
     </div>
-    <form class="form-panel" style="max-width:720px" onsubmit="Pages.saveUser(event, '${id || ""}')">
+    <form class="form-panel" style="max-width:720px" novalidate onsubmit="Pages.saveUser(event, '${id || ""}')">
         <div class="form-grid section-grid">
             <div class="form-item"><label>账号<b>*</b></label><input name="username" value="${h(u ? u.username : "")}" required ${isEdit ? "readonly" : ""}></div>
             <div class="form-item"><label>密码<b>*</b></label><input type="password" name="password" value="${h(u ? u.password : "")}" required placeholder="${isEdit ? "输入新密码或保留原密码" : "设置登录密码"}"></div>
@@ -457,6 +457,9 @@ Pages.saveUser = function (e, id) {
     fd.forEach((v, k) => { d[k] = v; });
     const dup = DB.find("users", x => x.username === d.username && x.id !== id);
     if (dup) { toast("账号已存在", "error"); return; }
+    if (!d.username) { toast("请输入账号", "error"); return; }
+    if (!d.name) { toast("请输入姓名", "error"); return; }
+    if (!d.role_id) { toast("请选择角色", "error"); return; }
     const payload = { username: d.username, password: d.password, name: d.name, role_id: d.role_id, email: d.email || "", phone: d.phone || "", status: d.status };
     if (id) {
         DB.update("users", id, payload);
@@ -465,7 +468,7 @@ Pages.saveUser = function (e, id) {
         DB.insert("users", payload);
         toast("用户已新增", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/users"; }, 300);
 };
 
 /* ============================================================
@@ -534,7 +537,7 @@ Pages.roleForm = function (id) {
         <div><h2>角色管理｜${isEdit ? "编辑" : "新增"}</h2><p>勾选该角色可使用的功能权限。</p></div>
         <div class="actions"><a class="btn" href="#/roles">返回角色管理</a></div>
     </div>
-    <form class="form-panel" onsubmit="Pages.saveRole(event, '${id || ""}')">
+    <form class="form-panel" novalidate onsubmit="Pages.saveRole(event, '${id || ""}')">
         <div class="form-grid section-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
             <div class="form-item"><label>角色名称<b>*</b></label><input name="name" value="${h(r ? r.name : "")}" required></div>
             <div class="form-item"><label>说明</label><input name="description" value="${h(r ? r.description : "")}"></div>
@@ -563,6 +566,7 @@ Pages.saveRole = function (e, id) {
     const desc = fd.get("description") || "";
     const perms = e.target.querySelectorAll('[name="perm"]:checked');
     const permissions = Array.from(perms).map(cb => cb.value);
+    if (!name) { toast("请输入角色名称", "error"); return; }
     if (!permissions.length) { toast("请至少勾选一项权限", "error"); return; }
     if (id) {
         DB.update("roles", id, { name, description: desc, permissions });
@@ -571,7 +575,7 @@ Pages.saveRole = function (e, id) {
         DB.insert("roles", { name, description: desc, permissions });
         toast("角色已新增", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/roles"; }, 300);
 };
 
 /* ============================================================

@@ -259,7 +259,7 @@ Pages.salesOrderForm = function (id) {
         </div>
     </div>
 
-    <form class="form-panel order-form-panel" id="salesOrderForm" onsubmit="Pages.saveSalesOrder(event, '${id || ""}')">
+    <form class="form-panel order-form-panel" id="salesOrderForm" novalidate onsubmit="Pages.saveSalesOrder(event, '${id || ""}')">
         <div class="doc-audit">
             <div><span>建立人员</span><strong>${isEdit ? h(o.created_by) : "保存后产生"}</strong></div>
             <div><span>建立时间</span><strong>${isEdit ? h(o.created_at) : "保存后产生"}</strong></div>
@@ -382,7 +382,7 @@ Pages.salesOrderForm = function (id) {
     </form>`;
 
     renderShell("sales_orders", content, "首页 / 日常作业 / 销货订单");
-    if (!isEdit || o.status === "draft") Pages.addSalesLine();
+    if (!isEdit) Pages.addSalesLine();
     Pages.bindSalesFormEvents();
 };
 
@@ -541,6 +541,8 @@ Pages.saveSalesOrder = function (e, id) {
         });
     });
     if (!lines.length) { toast("请至少新增一笔有效的订单明细", "error"); return; }
+    if (!data.customer_id) { toast("请选择客户", "error"); return; }
+    if (!data.sales_owner) { toast("请选择业务员", "error"); return; }
 
     const goodsTotal = lines.reduce((s, l) => s + l.amount, 0);
     const fees = Utils.num(data.shipping_fee) + Utils.num(data.platform_fee) + Utils.num(data.payment_fee) + Utils.num(data.other_fee);
@@ -573,7 +575,7 @@ Pages.saveSalesOrder = function (e, id) {
         DB.insert("sales_orders", payload);
         toast("销货订单已保存", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/sales-orders"; }, 300);
 };
 
 /* ============================================================
@@ -586,7 +588,7 @@ Pages.shipments = function () {
         const goods = s.lines.reduce((a, l) => a + Utils.num(l.amount), 0);
         const o = DB.get("sales_orders", s.sales_order_id);
         return `<tr>
-            <td><b>${h(s.no)}</b></td>
+            <td><a href="#/shipments/${s.id}"><b>${h(s.no)}</b></a></td>
             <td><a href="#/sales-orders/${s.sales_order_id}/edit">${h(s.order_no)}</a></td>
             <td>${h(s.ship_date)}</td>
             <td>${h(wh ? wh.name : "")}</td>
@@ -612,6 +614,48 @@ Pages.shipments = function () {
     </div>
     <p class="stat-line">共 ${list.length} 笔出货单</p>`;
     renderShell("shipments", content, "首页 / 日常作业 / 出货单");
+};
+
+/* ---- 出货单详情 ---- */
+Pages.shipmentDetail = function (id) {
+    const s = DB.get("shipments", id);
+    if (!s) { toast("找不到该出货单", "error"); render(); return; }
+    const wh = DB.get("warehouses", s.warehouse_id);
+    const o = DB.get("sales_orders", s.sales_order_id);
+    const goods = s.lines.reduce((a, l) => a + Utils.num(l.amount), 0);
+
+    const content = `
+    <div class="page-head">
+        <div><h1>出货单｜${h(s.no)}</h1>
+        <p>出货日期 ${h(s.ship_date)} ｜ ${h(wh ? wh.name : "")} ｜ ${h(s.logistics_method || "-")}${s.shipment_no ? ` ｜ 物流单号 ${h(s.shipment_no)}` : ""}</p></div>
+        <div class="actions">
+            <a class="btn" href="#/shipments">返回出货单</a>
+            <a class="btn ghost" href="#/sales-orders/${s.sales_order_id}/edit">查看来源订单 ${h(s.order_no)}</a>
+        </div>
+    </div>
+    <div class="doc-audit">
+        <div><span>收件人</span><strong>${h(s.recipient_name || "-")}</strong></div>
+        <div><span>联系电话</span><strong>${h(s.recipient_phone || "-")}</strong></div>
+        <div><span>收件地址</span><strong>${h(s.shipping_address || "-")}</strong></div>
+        <div><span>建立人员</span><strong>${h(s.created_by)}</strong></div>
+        <div><span>来源订单状态</span><strong>${o ? soStatusBadge(o.status) : badge("已出货")}</strong></div>
+    </div>
+    <div class="table-wrap list-scroll">
+        <table class="table">
+            <thead><tr><th>品号</th><th>品名</th><th class="num">数量</th><th>单位</th><th class="num">单价</th><th class="num">金额</th></tr></thead>
+            <tbody>${s.lines.map(l => `<tr>
+                <td>${h(l.code)}</td><td>${h(l.name)}</td>
+                <td class="num">${l.qty}</td><td>${h(l.unit)}</td>
+                <td class="num">${fmt(l.unit_price)}</td><td class="num">${fmt(l.amount)}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+    </div>
+    <div class="order-summary-bar" style="margin-top:16px">
+        <div><span>品项数</span><strong>${s.lines.length}</strong></div>
+        <div><span>出货金额</span><strong>${fmt(goods)}</strong></div>
+        <div><span>库存异动</span><strong style="color:var(--danger)">-${s.lines.reduce((a, l) => a + Utils.num(l.qty), 0)}</strong></div>
+    </div>`;
+    renderShell("shipments", content, "首页 / 日常作业 / 出货单 / " + s.no);
 };
 
 /* ============================================================
@@ -694,7 +738,7 @@ Pages.purchaseOrderForm = function (id) {
         <div><h2>采购单｜${isEdit ? "编辑" : "新增"}</h2><p>向供应商下单采购商品，进货后库存增加、应付账款形成。</p></div>
         <div class="actions"><a class="btn" href="#/purchase-orders">返回采购单</a></div>
     </div>
-    <form class="form-panel" id="poForm" onsubmit="Pages.savePO(event, '${id || ""}')">
+    <form class="form-panel" id="poForm" novalidate onsubmit="Pages.savePO(event, '${id || ""}')">
         <div class="doc-audit">
             <div><span>建立人员</span><strong>${isEdit ? h(o.created_by) : "保存后产生"}</strong></div>
             <div><span>建立时间</span><strong>${isEdit ? h(o.created_at) : "保存后产生"}</strong></div>
@@ -859,7 +903,7 @@ Pages.savePO = function (e, id) {
         DB.insert("purchase_orders", payload);
         toast("采购单已保存", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/purchase-orders"; }, 300);
 };
 
 /* ============================================================
@@ -914,7 +958,7 @@ Pages.inventoryAdjustForm = function () {
         <div><h2>库存调整｜新增</h2><p>调整类型：调整（盘点差异）、拆包（大包装拆小包）、组包（小包组合成大包装）。</p></div>
         <div class="actions"><a class="btn" href="#/inventory/inventory_adjust">返回库存调整</a></div>
     </div>
-    <form class="form-panel" id="adjForm" onsubmit="Pages.saveAdj(event)">
+    <form class="form-panel" id="adjForm" novalidate onsubmit="Pages.saveAdj(event)">
         <section class="form-section">
             <div class="form-grid section-grid">
                 <div class="form-item"><label>调整类型<b>*</b></label>
@@ -1030,7 +1074,7 @@ Pages.saveAdj = function (e) {
         lines, remark: data.remark || "", created_by: DB.currentUser().name
     });
     toast("库存调整已保存并更新库存", "success");
-    render();
+    setTimeout(() => { location.hash = "#/inventory/inventory_adjust"; }, 300);
 };
 
 /* ============================================================
@@ -1082,7 +1126,7 @@ Pages.salesReturnForm = function () {
         <div><h2>销货退回/折让｜新增</h2><p>选择已出货订单后自动带出客户与明细；退回增加库存、折让仅冲减应收。</p></div>
         <div class="actions"><a class="btn" href="#/sales-returns">返回退回/折让</a></div>
     </div>
-    <form class="form-panel" id="srForm" onsubmit="Pages.saveSalesReturn(event)">
+    <form class="form-panel" id="srForm" novalidate onsubmit="Pages.saveSalesReturn(event)">
         <section class="form-section">
             <div class="form-grid section-grid">
                 <div class="form-item"><label>销货订单<b>*</b></label>
@@ -1201,7 +1245,7 @@ Pages.saveSalesReturn = function (e) {
         created_by: DB.currentUser().name
     });
     toast("销货退回/折让已保存", "success");
-    render();
+    setTimeout(() => { location.hash = "#/sales-returns"; }, 300);
 };
 
 /* ============================================================
@@ -1249,7 +1293,7 @@ Pages.purchaseReturnForm = function () {
         <div><h2>采购退回/折让｜新增</h2><p>选择已进货采购单后自动带出供应商与明细；退回减少库存、冲减应付。</p></div>
         <div class="actions"><a class="btn" href="#/purchase-returns">返回退回/折让</a></div>
     </div>
-    <form class="form-panel" id="prForm" onsubmit="Pages.savePurchaseReturn(event)">
+    <form class="form-panel" id="prForm" novalidate onsubmit="Pages.savePurchaseReturn(event)">
         <section class="form-section">
             <div class="form-grid section-grid">
                 <div class="form-item"><label>采购单<b>*</b></label>
@@ -1360,5 +1404,5 @@ Pages.savePurchaseReturn = function (e) {
         created_by: DB.currentUser().name
     });
     toast("采购退回/折让已保存", "success");
-    render();
+    setTimeout(() => { location.hash = "#/purchase-returns"; }, 300);
 };

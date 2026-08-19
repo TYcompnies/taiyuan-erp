@@ -88,7 +88,7 @@ Pages.itemForm = function (id) {
         <div><h2>商品主档｜${isEdit ? "编辑" : "新增"}</h2><p>商品编号用于订单与库存判读，请保持唯一。</p></div>
         <div class="actions"><a class="btn" href="#/master/items">返回商品主档</a></div>
     </div>
-    <form class="form-panel" onsubmit="Pages.saveItem(event, '${id || ""}')">
+    <form class="form-panel" novalidate onsubmit="Pages.saveItem(event, '${id || ""}')">
         <section class="form-section">
             <div class="form-section-title"><h3>基本信息</h3></div>
             <div class="form-grid section-grid">
@@ -153,6 +153,8 @@ Pages.saveItem = function (e, id) {
     fd.forEach((v, k) => { d[k] = v; });
     const existing = DB.find("items", i => i.code === d.code && i.id !== id);
     if (existing) { toast("品号已存在，请更换", "error"); return; }
+    if (!d.code) { toast("请输入品号", "error"); return; }
+    if (!d.item_name) { toast("请输入品名", "error"); return; }
     const payload = {
         code: d.code, name: d.item_name, english_name: d.english_name, spec: d.spec,
         brand: d.brand, model: d.model, category_id: d.category_id, product_type: d.product_type,
@@ -171,7 +173,7 @@ Pages.saveItem = function (e, id) {
         DB.insert("items", payload);
         toast("商品已新增", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/master/items"; }, 300);
 };
 
 /* ============================================================
@@ -219,7 +221,7 @@ Pages.customerForm = function (id) {
         <div><h2>客户主档｜${isEdit ? "编辑" : "新增"}</h2><p>散客与平台订单可使用 WALKIN 客户。</p></div>
         <div class="actions"><a class="btn" href="#/master/customers">返回客户主档</a></div>
     </div>
-    <form class="form-panel" onsubmit="Pages.saveCustomer(event, '${id || ""}')">
+    <form class="form-panel" novalidate onsubmit="Pages.saveCustomer(event, '${id || ""}')">
         <div class="form-grid section-grid">
             <div class="form-item"><label>客户代码<b>*</b></label><input name="code" value="${h(c ? c.code : "")}" required placeholder="如 CUS000001"></div>
             <div class="form-item"><label>客户名称<b>*</b></label><input name="customer_name" value="${h(c ? c.name : "")}" required></div>
@@ -255,6 +257,8 @@ Pages.saveCustomer = function (e, id) {
     const fd = new FormData(e.target);
     const d = {};
     fd.forEach((v, k) => { d[k] = v; });
+    if (!d.code) { toast("请输入客户代码", "error"); return; }
+    if (!d.customer_name) { toast("请输入客户名称", "error"); return; }
     const payload = {
         code: d.code, name: d.customer_name, english_name: d.english_name,
         contact_person: d.contact_person, phone: d.phone, fax: d.fax, email: d.email,
@@ -271,7 +275,7 @@ Pages.saveCustomer = function (e, id) {
         DB.insert("customers", payload);
         toast("客户已新增", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/master/customers"; }, 300);
 };
 
 /* ============================================================
@@ -318,7 +322,7 @@ Pages.supplierForm = function (id) {
         <div><h2>供应商主档｜${isEdit ? "编辑" : "新增"}</h2></div>
         <div class="actions"><a class="btn" href="#/master/suppliers">返回供应商主档</a></div>
     </div>
-    <form class="form-panel" onsubmit="Pages.saveSupplier(event, '${id || ""}')">
+    <form class="form-panel" novalidate onsubmit="Pages.saveSupplier(event, '${id || ""}')">
         <div class="form-grid section-grid">
             <div class="form-item"><label>供应商代码<b>*</b></label><input name="code" value="${h(s ? s.code : "")}" required placeholder="如 SUP000001"></div>
             <div class="form-item"><label>供应商名称<b>*</b></label><input name="supplier_name" value="${h(s ? s.name : "")}" required></div>
@@ -353,6 +357,8 @@ Pages.saveSupplier = function (e, id) {
     const fd = new FormData(e.target);
     const d = {};
     fd.forEach((v, k) => { d[k] = v; });
+    if (!d.code) { toast("请输入供应商代码", "error"); return; }
+    if (!d.supplier_name) { toast("请输入供应商名称", "error"); return; }
     const payload = {
         code: d.code, name: d.supplier_name, english_name: d.english_name,
         contact_person: d.contact_person, phone: d.phone, fax: d.fax, email: d.email,
@@ -368,7 +374,7 @@ Pages.saveSupplier = function (e, id) {
         DB.insert("suppliers", payload);
         toast("供应商已新增", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/master/suppliers"; }, 300);
 };
 
 /* ============================================================
@@ -421,7 +427,7 @@ Pages.warehouseForm = function (id) {
         <div><h2>仓库主档｜${isEdit ? "编辑" : "新增"}</h2></div>
         <div class="actions"><a class="btn" href="#/master/warehouses">返回仓库主档</a></div>
     </div>
-    <form class="form-panel" style="max-width:820px" onsubmit="Pages.saveWarehouse(event, '${id || ""}')">
+    <form class="form-panel" style="max-width:820px" novalidate onsubmit="Pages.saveWarehouse(event, '${id || ""}')">
         <div class="form-grid section-grid">
             <div class="form-item"><label>仓库代码<b>*</b></label><input name="code" value="${h(w ? w.code : "")}" required placeholder="如 WH001"></div>
             <div class="form-item"><label>仓库名称<b>*</b></label><input name="name" value="${h(w ? w.name : "")}" required></div>
@@ -443,6 +449,8 @@ Pages.saveWarehouse = function (e, id) {
     const fd = new FormData(e.target);
     const d = {};
     fd.forEach((v, k) => { d[k] = v; });
+    if (!d.code) { toast("请输入仓库代码", "error"); return; }
+    if (!d.name) { toast("请输入仓库名称", "error"); return; }
     const payload = { code: d.code, name: d.name, contact: d.contact, phone: d.phone, address: d.address, remark: d.remark || "" };
     if (id) {
         DB.update("warehouses", id, payload);
@@ -451,7 +459,7 @@ Pages.saveWarehouse = function (e, id) {
         DB.insert("warehouses", payload);
         toast("仓库已新增", "success");
     }
-    render();
+    setTimeout(() => { location.hash = "#/master/warehouses"; }, 300);
 };
 
 /* ============================================================
@@ -569,7 +577,7 @@ Pages.simpleMasterModal = function (coll, id) {
     mask.className = "modal-mask";
     mask.innerHTML = `<div class="modal" style="max-width:480px">
         <div class="modal-head"><h3>${r ? "编辑" : "新增"}</h3><button class="icon-btn" onclick="this.closest('.modal-mask').remove()">✕</button></div>
-        <div class="modal-body"><form id="smForm" onsubmit="Pages.saveSimpleMaster(event, '${coll}', '${id || ""}')">${body}</form></div>
+        <div class="modal-body"><form id="smForm" novalidate onsubmit="Pages.saveSimpleMaster(event, '${coll}', '${id || ""}')">${body}</form></div>
         <div class="modal-foot">
             <button class="btn" onclick="this.closest('.modal-mask').remove()">取消</button>
             <button class="btn primary" onclick="document.getElementById('smForm').requestSubmit()">保存</button>

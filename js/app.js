@@ -538,21 +538,28 @@ function route(hash) {
         "permissions": () => Pages.permissions()
     };
 
-    // 带参数的编辑路由
+    // 带参数的编辑路由：/xxx/<id>/edit 或 /a/xxx/<id>/edit
     if (routes[key]) { routes[key](); return; }
-    if (p.length === 3 && p[1] !== "create") {
-        const id = p[1], action = p[2];
+    const lastSeg = p[p.length - 1];
+    if (lastSeg === "edit" && p.length >= 3 && p[p.length - 2] !== "create") {
+        const id = p[p.length - 2];
+        const base = p.slice(0, -2).join("/");
         const map = {
             "sales-orders": () => Pages.salesOrderForm(id),
+            "purchase-orders": () => Pages.purchaseOrderForm(id),
             "master/items": () => Pages.itemForm(id),
             "master/customers": () => Pages.customerForm(id),
             "master/suppliers": () => Pages.supplierForm(id),
             "master/warehouses": () => Pages.warehouseForm(id),
-            "purchase-orders": () => Pages.purchaseOrderForm(id),
             "users": () => Pages.userForm(id),
             "roles": () => Pages.roleForm(id)
         };
-        if (map[p[0] + "/" + p[1]] && action === "edit") { map[p[0] + "/" + p[1]](); return; }
+        if (map[base]) { map[base](); return; }
+    }
+    // 详情路由：/xxx/<id>
+    if (p.length === 2 && p[1] !== "create") {
+        const id = p[1];
+        if (p[0] === "shipments") { Pages.shipmentDetail(id); return; }
     }
     renderDashboard();
 }

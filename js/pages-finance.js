@@ -215,7 +215,7 @@ Pages.expenseForm = function () {
         <div><h2>费用支出｜新增</h2><p>登记营业费用，配合传票作业形成完整财务报表。</p></div>
         <div class="actions"><a class="btn" href="#/expenses">返回费用支出</a></div>
     </div>
-    <form class="form-panel" style="max-width:820px" onsubmit="Pages.saveExpense(event)">
+    <form class="form-panel" style="max-width:820px" novalidate onsubmit="Pages.saveExpense(event)">
         <div class="form-grid section-grid">
             <div class="form-item"><label>费用日期<b>*</b></label><input type="date" name="date" value="${Utils.today()}" required></div>
             <div class="form-item"><label>费用类型<b>*</b></label>
@@ -251,6 +251,8 @@ Pages.saveExpense = function (e) {
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
     if (Utils.num(data.amount) <= 0) { toast("请输入有效金额", "error"); return; }
+    if (!data.type) { toast("请选择费用类型", "error"); return; }
+    if (!data.account) { toast("请选择会计科目", "error"); return; }
     DB.insert("expenses", {
         no: nextDocNo("EX", "expenses"), date: data.date, type: data.type,
         account: data.account, amount: Utils.round(data.amount),
@@ -258,7 +260,7 @@ Pages.saveExpense = function (e) {
         voucher_no: "", created_by: DB.currentUser().name
     });
     toast("费用支出已保存", "success");
-    render();
+    setTimeout(() => { location.hash = "#/expenses"; }, 300);
 };
 
 /* ============================================================
@@ -335,7 +337,7 @@ Pages.voucherForm = function () {
         <div><h2>传票作业｜新增</h2><p>借方与贷方金额需平衡方可过账。</p></div>
         <div class="actions"><a class="btn" href="#/accounting/vouchers">返回传票</a></div>
     </div>
-    <form class="form-panel" onsubmit="Pages.saveVoucher(event)">
+    <form class="form-panel" novalidate onsubmit="Pages.saveVoucher(event)">
         <section class="form-section">
             <div class="form-grid section-grid">
                 <div class="form-item"><label>传票日期<b>*</b></label><input type="date" name="date" value="${Utils.today()}" required></div>
@@ -438,7 +440,7 @@ Pages.saveVoucher = function (e) {
         lines, balanced: true, remark: data.remark || "", created_by: DB.currentUser().name
     });
     toast("传票已保存", "success");
-    render();
+    setTimeout(() => { location.hash = "#/accounting/vouchers"; }, 300);
 };
 
 /* ============================================================
