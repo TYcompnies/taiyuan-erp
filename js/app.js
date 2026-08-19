@@ -130,7 +130,7 @@ const MENU = [
         group: "报表查询", key: "reports", items: [
             { code: "inventory_overview", label: "库存总览", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
             { code: "inventory_safety", label: "安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" },
-            { code: "income_statement", label: "损益表", hash: "#/accounting/income-statement", perm: "finance.income" }
+            { code: "report_income", label: "损益表", hash: "#/accounting/income-statement", perm: "finance.income" }
         ]
     },
     {
@@ -157,7 +157,7 @@ function renderShell(activeCode, contentHtml, breadcrumb) {
         if (!items.length) return;
         const groupOpen = items.some(it => it.code === activeCode);
         const links = items.map(it =>
-            `<a class="menu-link ${it.code === activeCode ? "active" : ""}" data-code="${it.code}" href="${it.hash}">${it.label}</a>`
+            `<a class="menu-link ${(it.code === activeCode || (it.code === "report_income" && activeCode === "income_statement")) ? "active" : ""}" data-code="${it.code}" href="${it.hash}">${it.label}</a>`
         ).join("");
         menuHtml += `<div class="menu-group ${groupOpen ? "open" : ""}">
             <button class="menu-main" type="button" onclick="this.parentElement.classList.toggle('open')">
@@ -204,7 +204,7 @@ function renderShell(activeCode, contentHtml, breadcrumb) {
     if (s) s.addEventListener("input", () => {
         const q = s.value.trim().toLowerCase();
         document.querySelectorAll(".menu-link").forEach(a => {
-            const show = !q || a.textContent.toLowerCase().indexOf(q) >= 0 || a.dataset.code.indexOf(q) >= 0;
+            const show = !q || a.textContent.toLowerCase().indexOf(q) >= 0 || (a.dataset.code || "").toLowerCase().indexOf(q) >= 0;
             a.style.display = show ? "" : "none";
         });
     });
@@ -255,7 +255,8 @@ const App = {
         render();
     },
     toggleSidebar() {
-        document.body.classList.toggle("sidebar-collapsed");
+        const c = document.body.classList.toggle("sidebar-collapsed");
+        localStorage.setItem("taiyuan_erp_sidebar", c ? "1" : "0");
     },
     toggleDark() {
         const d = document.body.classList.toggle("dark");
@@ -275,7 +276,13 @@ function renderDashboard() {
     const pendingShip = orders.filter(o => o.status === "draft");
     const pendingReceive = pos.filter(o => o.status === "draft");
     const lowStock = items.filter(i => !i.disabled && DB.totalStock(i.id) < i.safety_stock && DB.totalStock(i.id) >= 0);
-    const negStock = items.filter(i => DB.totalStock(i.id) < 0);
+    const negStock = items.filter(i => !i.disabled && DB.totalStock(i.id) < 0);
+    const shippedAll = orders.filter(o => o.status === "shipped");
+    const costMissingCount = shippedAll.filter(o => o.lines.some(l => {
+        const it = DB.get("items", l.item_id);
+        return !it || !it.cost || it.cost <= 0;
+    })).length;
+    const curMissingCount = DB.list("currencies").filter(c => !c.is_base && (!c.rate || c.rate <= 0)).length;
 
     // 本月损益
     const shipped = orders.filter(o => o.status === "shipped" && o.order_date >= month);
@@ -287,13 +294,21 @@ function renderDashboard() {
     const expenses = DB.list("expenses").filter(e => e.date >= month).reduce((s, e) => s + Utils.num(e.amount), 0);
     const profit = Utils.round(revenue - cogs - expenses);
 
-    // 应收应付
-    const arUnpaid = orders.filter(o => o.status === "shipped" && o.payment_status !== "paid")
-        .reduce((s, o) => s + Utils.num(o.invoice_amount), 0);
+    // 应收应付（扣除已收/已付与退货/退回冲销）
+    const arReturnMap = {};
+    DB.list("sales_returns").filter(r => r.offset_receivable).forEach(r => {
+        arReturnMap[r.sales_order_id] = (arReturnMap[r.sales_order_id] || 0) + Utils.num(r.total_amount);
+    });
+    const arUnpaid = orders.filter(o => o.status === "shipped")
+        .reduce((s, o) => s + Math.max(Utils.num(o.invoice_amount) - Utils.num(o.received_amount) - (arReturnMap[o.id] || 0), 0), 0);
     const arBalance = orders.filter(o => o.status === "shipped")
         .reduce((s, o) => s + Utils.num(o.invoice_amount), 0);
-    const apUnpaid = pos.filter(o => o.status === "received" && Utils.num(o.amount) > Utils.num(o.paid_amount))
-        .reduce((s, o) => s + (Utils.num(o.amount) - Utils.num(o.paid_amount)), 0);
+    const apReturnMap = {};
+    DB.list("purchase_returns").filter(r => r.offset_payable).forEach(r => {
+        apReturnMap[r.purchase_order_id] = (apReturnMap[r.purchase_order_id] || 0) + Utils.num(r.amount);
+    });
+    const apUnpaid = pos.filter(o => o.status === "received")
+        .reduce((s, o) => s + Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (apReturnMap[o.id] || 0), 0), 0);
     const apBalance = pos.filter(o => o.status === "received").reduce((s, o) => s + Utils.num(o.amount), 0);
     const stockValue = items.reduce((s, i) => s + DB.stockValue(i.id), 0);
     const unposted = DB.list("vouchers").filter(v => v.status === "未过账").length;
@@ -309,8 +324,8 @@ function renderDashboard() {
         { label: "商品币别缺漏", count: items.filter(i => !i.disabled && !i.purchase_currency).length + "笔", unit: "笔", status: "warning", link: "#/master/items", desc: "商品采购币别会影响库存价值与销货成本人民币换算。" },
         { label: "商品单位缺漏", count: items.filter(i => !i.disabled && (!i.sales_unit || !i.purchase_unit)).length + "笔", unit: "笔", status: "warning", link: "#/master/items", desc: "采购、销售、库存单位会影响拆包与库存异动判读。" },
         { label: "负库存", count: negStock.length + "笔", unit: "笔", status: negStock.length ? "blocker" : "ok", link: "#/inventory/inventory_overview", desc: "负库存代表出货、拆包或盘点流程有资料需要修正。" },
-        { label: "已出货成本未锁", count: "0笔", unit: "笔", status: "ok", link: "#/sales-orders", desc: "已出货订单若没有成本，损益表的销货成本会低估。" },
-        { label: "外币汇率缺漏", count: "0笔", unit: "笔", status: "ok", link: "#/master/currencies", desc: "外币单据与商品成本都需要汇率，才能换算人民币库存与损益。" },
+        { label: "已出货成本缺漏", count: costMissingCount + "笔", unit: "笔", status: costMissingCount ? "warning" : "ok", link: "#/sales-orders", desc: "已出货订单若没有成本，损益表的销货成本会低估。" },
+        { label: "外币汇率缺漏", count: curMissingCount + "笔", unit: "笔", status: curMissingCount ? "warning" : "ok", link: "#/master/currencies", desc: "外币单据与商品成本都需要汇率，才能换算人民币库存与损益。" },
         { label: "低库存", count: lowStock.length + "笔", unit: "笔", status: lowStock.length ? "warning" : "ok", link: "#/inventory/inventory_overview", desc: "低于安全库存的品项，需要评估是否采购。" },
         { label: "待出货订单", count: pendingShip.length + "笔", unit: "笔", status: pendingShip.length ? "warning" : "ok", link: "#/sales-orders", desc: "销货订单完成出货后才会正式扣库存并形成应收。" },
         { label: "待进货采购", count: pendingReceive.length + "笔", unit: "笔", status: pendingReceive.length ? "warning" : "ok", link: "#/purchase-orders", desc: "采购单进货后才会增加库存并形成应付。" },
@@ -483,7 +498,8 @@ function render() {
         return;
     }
     const hash = location.hash || "#/dashboard";
-    document.body.className = "";
+    document.body.className = localStorage.getItem("taiyuan_erp_sidebar") === "1" ? "sidebar-collapsed" : "";
+    document.body.classList.toggle("dark", localStorage.getItem("taiyuan_erp_dark") === "1");
     route(hash);
 }
 
@@ -538,8 +554,21 @@ function route(hash) {
         "permissions": () => Pages.permissions()
     };
 
+    // 菜单路径 → 权限映射
+    const permForPath = (k) => {
+        for (const g of MENU) for (const it of g.items) {
+            if (it.hash === "#/" + k) return it.perm;
+        }
+        return null;
+    };
+    const denyAccess = (k) => { toast("您没有访问该页面的权限", "error"); renderDashboard(); };
+
     // 带参数的编辑路由：/xxx/<id>/edit 或 /a/xxx/<id>/edit
-    if (routes[key]) { routes[key](); return; }
+    if (routes[key]) {
+        const perm = permForPath(key);
+        if (perm && !can(perm)) { denyAccess(key); return; }
+        routes[key](); return;
+    }
     const lastSeg = p[p.length - 1];
     if (lastSeg === "edit" && p.length >= 3 && p[p.length - 2] !== "create") {
         const id = p[p.length - 2];
@@ -554,13 +583,22 @@ function route(hash) {
             "users": () => Pages.userForm(id),
             "roles": () => Pages.roleForm(id)
         };
-        if (map[base]) { map[base](); return; }
+        if (map[base]) {
+            const perm = permForPath(base);
+            if (perm && !can(perm)) { denyAccess(base); return; }
+            map[base](); return;
+        }
     }
     // 详情路由：/xxx/<id>
     if (p.length === 2 && p[1] !== "create") {
         const id = p[1];
-        if (p[0] === "shipments") { Pages.shipmentDetail(id); return; }
+        if (p[0] === "shipments") {
+            const perm = permForPath("shipments");
+            if (perm && !can(perm)) { denyAccess("shipments"); return; }
+            Pages.shipmentDetail(id); return;
+        }
     }
+    toast("找不到该页面，已回到首页", "error");
     renderDashboard();
 }
 

@@ -85,7 +85,8 @@ Pages.salesOrders = function () {
     const rows = orders.map(o => {
         const cu = DB.get("customers", o.customer_id);
         const goods = o.lines.reduce((s, l) => s + Utils.num(l.amount), 0);
-        const shipDate = o.status === "shipped" ? `<td>${h(Utils.today())}</td>` : `<td class="num">-</td>`;
+        const shipRow = DB.find("shipments", s => s.sales_order_id === o.id);
+        const shipDate = shipRow ? shipRow.ship_date : "-";
         return `<tr>
             <td><a href="#/sales-orders/${o.id}/edit"><b>${h(o.no)}</b></a></td>
             <td>${h(o.order_date)}</td>
@@ -96,7 +97,7 @@ Pages.salesOrders = function () {
             <td class="num">${fmt(o.shipping_fee + o.platform_fee + o.payment_fee + o.other_fee)}</td>
             <td class="num">${fmt(o.tax_amount)}</td>
             <td class="num">${fmt(o.net_receipt)}</td>
-            <td>${soStatusBadge(o.status)}</td>
+            <td>${soStatusBadge(o.status)}${shipRow ? `<span style="display:block;font-size:11.5px;color:var(--muted)">${h(shipDate)}</span>` : ""}</td>
             <td>${o.payment_status === "paid" ? badge("已收款") : badge("未收款")}</td>
             <td>${h(o.logistics_method || "-")}</td>
             <td>${o.invoice_status ? badge(o.invoice_status) : '-'}</td>
@@ -180,6 +181,7 @@ Pages.soSearch = function () {
 Pages.deleteSalesOrder = function (id) {
     const o = DB.get("sales_orders", id);
     if (!o) return;
+    if (o.status !== "draft") { toast("已出货的订单不能删除，请先处理关联的出货单", "error"); return; }
     confirmModal(`确定要删除销货订单 ${o.no} 吗？此操作不可恢复。`, () => {
         DB.remove("sales_orders", id);
         toast("销货订单已删除", "success");
@@ -214,10 +216,21 @@ Pages.shipOrder = function (id) {
 Pages.doShip = function (id) {
     const o = DB.get("sales_orders", id);
     if (!o) return;
+    if (o.status !== "draft") { toast("该订单已出货，请勿重复操作", "error"); return; }
     const whId = document.getElementById("shipWh").value;
     const log = document.getElementById("shipLog").value;
     const shipNo = document.getElementById("shipNo").value;
     if (!whId) { toast("请选择出货仓库", "error"); return; }
+
+    // 扣库存前检查库存是否充足（仅预警，不阻断超卖场景）
+    const shortLines = o.lines.filter(l => {
+        const qty = Utils.num(l.qty);
+        const stock = DB.stockOf(whId, l.item_id);
+        return qty > 0 && stock < qty;
+    });
+    if (shortLines.length) {
+        toast(`库存不足提醒：${shortLines.map(l => l.code).join("、")} 出货后会产生负库存`, "error");
+    }
 
     // 扣库存
     o.lines.forEach(l => { DB.addStock(whId, l.item_id, -l.qty); });
@@ -522,6 +535,9 @@ Pages.bindSalesFormEvents = function () {
 
 Pages.saveSalesOrder = function (e, id) {
     e.preventDefault();
+    if (window.__saveLock) { toast("正在保存，请稍候…", "error"); return; }
+    window.__saveLock = true;
+    try {
     const fd = new FormData(e.target);
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
@@ -576,6 +592,7 @@ Pages.saveSalesOrder = function (e, id) {
         toast("销货订单已保存", "success");
     }
     setTimeout(() => { location.hash = "#/sales-orders"; }, 300);
+    } finally { setTimeout(() => { window.__saveLock = false; }, 400); }
 };
 
 /* ============================================================
@@ -676,7 +693,7 @@ Pages.purchaseOrders = function () {
             <td class="num">${fmt(o.amount)}</td>
             <td class="num">${fmt(unpaid)}</td>
             <td>${poStatusBadge(o.status)}</td>
-            <td class="num">${o.status === "received" ? "-" : `<a class="link-btn" href="#/purchase-orders/${o.id}/edit">退回/折让</a>`}</td>
+            <td class="num">${o.status === "received" ? `<a class="link-btn" href="#/purchase-returns/create">退回/折让</a>` : "-"}</td>
             <td class="action-col">
                 <a class="link-btn" href="#/purchase-orders/${o.id}/edit">编辑</a>
                 ${o.status === "draft" && can("purchase.receive") ? `<button class="link-btn" onclick="Pages.receivePO('${o.id}')">进货入库</button>` : ""}
@@ -706,6 +723,7 @@ Pages.purchaseOrders = function () {
 Pages.deletePO = function (id) {
     const o = DB.get("purchase_orders", id);
     if (!o) return;
+    if (o.status !== "draft") { toast("已进货的采购单不能删除，请先处理关联的进货记录", "error"); return; }
     confirmModal(`确定要删除采购单 ${o.no} 吗？此操作不可恢复。`, () => {
         DB.remove("purchase_orders", id);
         toast("采购单已删除", "success");
@@ -717,6 +735,7 @@ Pages.deletePO = function (id) {
 Pages.receivePO = function (id) {
     const o = DB.get("purchase_orders", id);
     if (!o) return;
+    if (o.status !== "draft") { toast("该采购单已进货，请勿重复操作", "error"); return; }
     confirmModal(`确定要执行进货入库吗？采购单 ${o.no} 的商品将增加库存并形成应付账款。`, () => {
         o.lines.forEach(l => { DB.addStock(o.warehouse_id, l.item_id, l.qty); });
         DB.update("purchase_orders", o.id, { status: "received" });
@@ -782,7 +801,7 @@ Pages.purchaseOrderForm = function (id) {
     </form>`;
 
     renderShell("purchase_orders", content, "首页 / 日常作业 / 采购单");
-    if (!isEdit || o.status === "draft") Pages.addPOLine();
+    if (!isEdit) Pages.addPOLine();
     Pages.bindPOEvents();
 };
 
@@ -867,6 +886,9 @@ Pages.syncSupplierCurrency = function (select) {
 
 Pages.savePO = function (e, id) {
     e.preventDefault();
+    if (window.__saveLock) { toast("正在保存，请稍候…", "error"); return; }
+    window.__saveLock = true;
+    try {
     const fd = new FormData(e.target);
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
@@ -886,6 +908,8 @@ Pages.savePO = function (e, id) {
         });
     });
     if (!lines.length) { toast("请至少新增一笔有效的采购明细", "error"); return; }
+    if (!data.supplier_id) { toast("请选择供应商", "error"); return; }
+    if (!data.warehouse_id) { toast("请选择入库仓库", "error"); return; }
     const amount = lines.reduce((s, l) => s + l.amount, 0);
 
     const payload = {
@@ -904,6 +928,7 @@ Pages.savePO = function (e, id) {
         toast("采购单已保存", "success");
     }
     setTimeout(() => { location.hash = "#/purchase-orders"; }, 300);
+    } finally { setTimeout(() => { window.__saveLock = false; }, 400); }
 };
 
 /* ============================================================
@@ -945,9 +970,12 @@ Pages.inventoryAdjust = function () {
 };
 
 Pages.deleteAdj = function (id) {
-    confirmModal("确定要删除这笔库存调整记录吗？", () => {
+    const a = DB.get("inventory_adjusts", id);
+    if (!a) return;
+    confirmModal("确定要删除这笔库存调整记录吗？删除后库存将按原数量反向冲销。", () => {
+        a.lines.forEach(l => { DB.addStock(a.warehouse_id, l.item_id, -Utils.num(l.qty)); });
         DB.remove("inventory_adjusts", id);
-        toast("已删除", "success");
+        toast("已删除，库存已回冲", "success");
         render();
     });
 };
@@ -1213,8 +1241,10 @@ Pages.saveSalesReturn = function (e) {
     document.querySelectorAll("#srLines tbody tr").forEach(row => {
         const qty = Utils.num(row.querySelector('[name="qty[]"]').value);
         if (qty <= 0) return;
+        const code = row.querySelector(".item-code").value;
+        const itRef = DB.itemByCode(code);
         lines.push({
-            item_id: "", code: row.querySelector(".item-code").value,
+            item_id: itRef ? itRef.id : "", code,
             name: row.querySelector('[name="item_name[]"]').value, qty,
             unit: row.querySelector('[name="unit[]"]').value,
             unit_price: Utils.num(row.querySelector('[name="unit_price[]"]').value),
@@ -1224,6 +1254,10 @@ Pages.saveSalesReturn = function (e) {
     });
     if (!lines.length) { toast("请至少新增一笔退回明细", "error"); return; }
     const total = lines.reduce((s, l) => s + l.amount, 0);
+    // 税额按退回金额占原单销售额比例分摊
+    const ratio = Utils.num(so.invoice_amount) > 0 ? total / Utils.num(so.invoice_amount) : 0;
+    const taxAmount = Utils.round(Utils.num(so.tax_amount) * ratio);
+    const untaxedAmount = Utils.round(total - taxAmount);
     const costReversal = lines.reduce((s, l) => {
         const it = DB.itemByCode(l.code);
         return s + Utils.num(l.qty) * Utils.num(it ? it.cost : 0);
@@ -1239,7 +1273,7 @@ Pages.saveSalesReturn = function (e) {
     DB.insert("sales_returns", {
         no: nextDocNo("SR", "sales_returns"), sales_order_id: so.id, order_no: so.no,
         customer_id: so.customer_id, type: data.type, return_date: data.return_date,
-        warehouse_id: data.warehouse_id, lines, untaxed_amount: total, tax_amount: 0,
+        warehouse_id: data.warehouse_id, lines, untaxed_amount: untaxedAmount, tax_amount: taxAmount,
         total_amount: total, offset_receivable: data.offset_receivable === "1",
         cost_reversal: Utils.round(costReversal), remark: data.remark || "",
         created_by: DB.currentUser().name
@@ -1378,8 +1412,10 @@ Pages.savePurchaseReturn = function (e) {
     document.querySelectorAll("#prLines tbody tr").forEach(row => {
         const qty = Utils.num(row.querySelector('[name="qty[]"]').value);
         if (qty <= 0) return;
+        const code = row.querySelector(".item-code").value;
+        const itRef = DB.itemByCode(code);
         lines.push({
-            item_id: "", code: row.querySelector(".item-code").value,
+            item_id: itRef ? itRef.id : "", code,
             name: row.querySelector('[name="item_name[]"]').value, qty,
             unit: row.querySelector('[name="unit[]"]').value,
             unit_price: Utils.num(row.querySelector('[name="unit_price[]"]').value),

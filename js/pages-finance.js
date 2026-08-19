@@ -9,10 +9,15 @@
    ============================================================ */
 Pages.accountsReceivable = function () {
     const orders = DB.list("sales_orders").filter(o => o.status === "shipped").sort((a, b) => b.no.localeCompare(a.no));
+    // 销货退回冲减应收的金额映射（按订单）
+    const returnMap = {};
+    DB.list("sales_returns").filter(r => r.offset_receivable).forEach(r => {
+        returnMap[r.sales_order_id] = (returnMap[r.sales_order_id] || 0) + Utils.num(r.total_amount);
+    });
     const rows = orders.map(o => {
         const cu = DB.get("customers", o.customer_id);
         const received = Utils.num(o.received_amount) || 0;
-        const outstanding = Math.max(Utils.num(o.invoice_amount) - received, 0);
+        const outstanding = Math.max(Utils.num(o.invoice_amount) - received - (returnMap[o.id] || 0), 0);
         const days = Math.max(0, Math.round((new Date(Utils.today()) - new Date(o.order_date)) / 86400000));
         return `<tr>
             <td><b>${h(o.no)}</b></td>
@@ -28,7 +33,7 @@ Pages.accountsReceivable = function () {
         </tr>`;
     }).join("");
 
-    const totalReceivable = orders.reduce((s, o) => s + Math.max(Utils.num(o.invoice_amount) - Utils.num(o.received_amount), 0), 0);
+    const totalReceivable = orders.reduce((s, o) => s + Math.max(Utils.num(o.invoice_amount) - Utils.num(o.received_amount) - (returnMap[o.id] || 0), 0), 0);
 
     const content = `
     <div class="page-head">
@@ -61,7 +66,7 @@ Pages.receivePayment = function (id) {
         <div class="modal-body">
             <div class="form-item"><label>应收金额</label><input value="${fmt(o.invoice_amount)}" readonly></div>
             <div class="form-item" style="margin-top:10px"><label>未收金额</label><input value="${fmt(outstanding)}" readonly></div>
-            <div class="form-item" style="margin-top:10px"><label>本次收款金额<b>*</b></label><input type="number" id="payAmount" value="${fmt(outstanding)}" step="0.01"></div>
+            <div class="form-item" style="margin-top:10px"><label>本次收款金额<b>*</b></label><input type="number" id="payAmount" value="${outstanding.toFixed(2)}" step="0.01" min="0"></div>
             <div class="form-item" style="margin-top:10px"><label>收款方式</label><select id="payMethod">${feeMethodOptions("银行转账")}</select></div>
             <div class="form-item" style="margin-top:10px"><label>收款日期</label><input type="date" id="payDate" value="${Utils.today()}"></div>
         </div>
@@ -79,6 +84,8 @@ Pages.doSavePayment = function (id) {
     const amt = Utils.num(document.getElementById("payAmount").value);
     if (amt <= 0) { toast("请输入有效收款金额", "error"); return; }
     const received = Utils.num(o.received_amount) || 0;
+    const outstanding = Math.max(Utils.num(o.invoice_amount) - received, 0);
+    if (amt > outstanding + 0.001) { toast("收款金额不能超过未收金额", "error"); return; }
     const newReceived = Utils.round(received + amt);
     const payment_status = newReceived >= Utils.num(o.invoice_amount) ? "paid" : "partial";
     DB.update("sales_orders", id, { received_amount: newReceived, payment_status });
@@ -92,9 +99,14 @@ Pages.doSavePayment = function (id) {
    ============================================================ */
 Pages.accountsPayable = function () {
     const pos = DB.list("purchase_orders").filter(o => o.status === "received").sort((a, b) => b.no.localeCompare(a.no));
+    // 采购退回冲减应付的金额映射（按采购单）
+    const returnMap = {};
+    DB.list("purchase_returns").filter(r => r.offset_payable).forEach(r => {
+        returnMap[r.purchase_order_id] = (returnMap[r.purchase_order_id] || 0) + Utils.num(r.amount);
+    });
     const rows = pos.map(o => {
         const sp = DB.get("suppliers", o.supplier_id);
-        const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount), 0);
+        const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (returnMap[o.id] || 0), 0);
         const days = Math.max(0, Math.round((new Date(Utils.today()) - new Date(o.po_date)) / 86400000));
         return `<tr>
             <td><b>${h(o.no)}</b></td>
@@ -110,7 +122,7 @@ Pages.accountsPayable = function () {
         </tr>`;
     }).join("");
 
-    const totalPayable = pos.reduce((s, o) => s + Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount), 0), 0);
+    const totalPayable = pos.reduce((s, o) => s + Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (returnMap[o.id] || 0), 0), 0);
 
     const content = `
     <div class="page-head">
@@ -142,7 +154,7 @@ Pages.payPO = function (id) {
         <div class="modal-body">
             <div class="form-item"><label>应付金额</label><input value="${fmt(o.amount)}" readonly></div>
             <div class="form-item" style="margin-top:10px"><label>未付金额</label><input value="${fmt(unpaid)}" readonly></div>
-            <div class="form-item" style="margin-top:10px"><label>本次付款金额<b>*</b></label><input type="number" id="payAmountPO" value="${fmt(unpaid)}" step="0.01"></div>
+            <div class="form-item" style="margin-top:10px"><label>本次付款金额<b>*</b></label><input type="number" id="payAmountPO" value="${unpaid.toFixed(2)}" step="0.01" min="0"></div>
             <div class="form-item" style="margin-top:10px"><label>付款方式</label><select id="payMethodPO">${feeMethodOptions("银行转账")}</select></div>
             <div class="form-item" style="margin-top:10px"><label>付款日期</label><input type="date" id="payDatePO" value="${Utils.today()}"></div>
         </div>
@@ -159,6 +171,8 @@ Pages.doSavePayPO = function (id) {
     if (!o) return;
     const amt = Utils.num(document.getElementById("payAmountPO").value);
     if (amt <= 0) { toast("请输入有效付款金额", "error"); return; }
+    const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount), 0);
+    if (amt > unpaid + 0.001) { toast("付款金额不能超过未付金额", "error"); return; }
     DB.update("purchase_orders", id, { paid_amount: Utils.round(Utils.num(o.paid_amount) + amt) });
     document.querySelector(".modal-mask")?.remove();
     toast("付款登记成功", "success");
@@ -182,6 +196,8 @@ Pages.expenses = function () {
         <td class="action-col"><button class="link-btn danger" onclick="Pages.deleteExpense('${e.id}')">删除</button></td>
     </tr>`).join("");
     const total = list.reduce((s, e) => s + Utils.num(e.amount), 0);
+    const monthStart = Utils.monthStart();
+    const monthTotal = list.filter(e => e.date >= monthStart).reduce((s, e) => s + Utils.num(e.amount), 0);
 
     const content = `
     <div class="page-head">
@@ -189,8 +205,9 @@ Pages.expenses = function () {
         <div class="head-actions">${can("finance.expense") ? `<a class="btn primary" href="#/expenses/create">+ 新增费用支出</a>` : ""}</div>
     </div>
     <div class="kpi-grid">
-        <div class="kpi-card"><span>本月费用</span><strong>${fmt(total)}</strong><p>全部费用支出合计</p></div>
-        <div class="kpi-card"><span>费用笔数</span><strong>${list.length}</strong><p>登记费用记录数</p></div>
+        <div class="kpi-card"><span>本月费用</span><strong>${fmt(monthTotal)}</strong><p>当月费用支出合计</p></div>
+        <div class="kpi-card"><span>累计费用</span><strong>${fmt(total)}</strong><p>全部费用支出合计</p></div>
+        <div class="kpi-card"><span>本月笔数</span><strong>${list.filter(e => e.date >= monthStart).length}</strong><p>当月费用记录数</p></div>
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
@@ -202,6 +219,9 @@ Pages.expenses = function () {
 };
 
 Pages.deleteExpense = function (id) {
+    const e = DB.get("expenses", id);
+    if (!e) return;
+    if (e.voucher_no) { toast("该费用已关联传票，请先删除对应传票后再删除费用", "error"); return; }
     confirmModal("确定要删除这笔费用支出吗？", () => {
         DB.remove("expenses", id);
         toast("已删除", "success");
@@ -314,16 +334,23 @@ Pages.postVoucher = function (id) {
     const v = DB.get("vouchers", id);
     if (!v) return;
     if (!v.balanced) { toast("该传票借贷不平衡，无法过账", "error"); return; }
+    if (v.status === "已过账") { toast("该传票已过账，请勿重复操作", "error"); return; }
     confirmModal(`确定要过账传票 ${v.no} 吗？过账后不可修改。`, () => {
         DB.update("vouchers", id, { status: "已过账" });
-        const ex = DB.find("expenses", e => e.voucher_no === v.no);
-        if (ex) DB.update("expenses", ex.id, { voucher_no: v.no });
+        // 来源为费用支出时，将传票号回写到对应费用记录
+        if (v.source === "费用支出" && v.source_no) {
+            const ex = DB.find("expenses", e => e.no === v.source_no);
+            if (ex) DB.update("expenses", ex.id, { voucher_no: v.no });
+        }
         toast("传票已过账", "success");
         render();
     }, "传票过账");
 };
 
 Pages.deleteVoucher = function (id) {
+    const v = DB.get("vouchers", id);
+    if (!v) return;
+    if (v.status === "已过账") { toast("已过账的传票不能删除", "error"); return; }
     confirmModal("确定要删除这笔传票吗？", () => {
         DB.remove("vouchers", id);
         toast("已删除", "success");
@@ -426,9 +453,11 @@ Pages.saveVoucher = function (e) {
         const c = Utils.num(credits[i].value);
         if (!a) continue;
         if (d === 0 && c === 0) continue;
+        if (d > 0 && c > 0) { toast("同一分录不能同时填写借方与贷方金额", "error"); return; }
         lines.push({ account: a, debit: d, credit: c });
     }
     if (!lines.length) { toast("请至少输入一笔分录", "error"); return; }
+    if (!data.date) { toast("请选择传票日期", "error"); return; }
     const dTotal = lines.reduce((s, l) => s + l.debit, 0);
     const cTotal = lines.reduce((s, l) => s + l.credit, 0);
     if (Math.abs(dTotal - cTotal) > 0.01) { toast("借方与贷方金额不平衡，无法保存", "error"); return; }

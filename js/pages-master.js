@@ -68,6 +68,14 @@ Pages.itemSearch = function (v) {
 Pages.deleteItem = function (id) {
     const it = DB.get("items", id);
     if (!it) return;
+    // 引用检查：被任何单据明细引用时拒绝删除，避免孤儿引用
+    const refLabels = {
+        sales_orders: "销货订单", purchase_orders: "采购单", shipments: "出货单",
+        inventory_adjusts: "库存调整单", sales_returns: "销货退回单", purchase_returns: "采购退回单"
+    };
+    const refColl = Object.keys(refLabels).find(c => DB.find(c, x => (x.lines || []).some(l => l.item_id === id)));
+    if (refColl) { toast(`该商品已被${refLabels[refColl]}引用，无法删除；建议改为停用`, "error"); return; }
+    if (DB.totalStock(id) !== 0) { toast("该商品仍有库存，无法删除；建议改为停用", "error"); return; }
     confirmModal(`确定要删除商品 ${it.code} - ${it.name} 吗？`, () => {
         DB.remove("items", id);
         toast("商品已删除", "success");
@@ -181,7 +189,8 @@ Pages.saveItem = function (e, id) {
    ============================================================ */
 Pages.customers = function () {
     const list = DB.list("customers").sort((a, b) => a.code.localeCompare(b.code));
-    const rows = list.map(c => `
+    const q = (window.__custSearch || "").toLowerCase();
+    const rows = list.filter(c => !q || (c.code + c.name + (c.english_name || "") + (c.contact_person || "") + (c.phone || "")).toLowerCase().indexOf(q) >= 0).map(c => `
         <div class="master-card">
             <div class="mc-head">
                 <div><div class="mc-name">${h(c.name)}</div><div class="mc-code">${h(c.code)}${c.english_name ? " · " + h(c.english_name) : ""}</div></div>
@@ -204,9 +213,17 @@ Pages.customers = function () {
         <div><h1>客户主档</h1><p>维护客户基础资料；销货订单必须指定客户。</p></div>
         <div class="head-actions">${can("master.customer") ? `<a class="btn primary" href="#/master/customers/create">+ 新增客户</a>` : ""}</div>
     </div>
-    <div class="master-grid">${rows || `<div class="empty-state" style="grid-column:1/-1"><div class="big">👥</div>暂无客户</div>`}</div>
-    <p class="stat-line">共 ${list.length} 笔客户</p>`;
+    <div class="toolbar">
+        <div class="search"><input placeholder="搜索代码/名称/联系人/电话..." value="${h(window.__custSearch || "")}" oninput="Pages.custSearch(this.value)"></div>
+    </div>
+    <div class="master-grid">${rows || `<div class="empty-state" style="grid-column:1/-1"><div class="big">👥</div>${q ? "没有符合的客户" : "暂无客户"}</div>`}</div>
+    <p class="stat-line">共 ${rows.length} / ${list.length} 笔客户</p>`;
     renderShell("customers", content, "首页 / 基本资料 / 客户主档");
+};
+
+Pages.custSearch = function (v) {
+    window.__custSearch = v;
+    Pages.customers();
 };
 
 Pages.customerForm = function (id) {
@@ -259,6 +276,8 @@ Pages.saveCustomer = function (e, id) {
     fd.forEach((v, k) => { d[k] = v; });
     if (!d.code) { toast("请输入客户代码", "error"); return; }
     if (!d.customer_name) { toast("请输入客户名称", "error"); return; }
+    const dupC = DB.find("customers", c => c.code === d.code && c.id !== id);
+    if (dupC) { toast("客户代码已存在，请更换", "error"); return; }
     const payload = {
         code: d.code, name: d.customer_name, english_name: d.english_name,
         contact_person: d.contact_person, phone: d.phone, fax: d.fax, email: d.email,
@@ -283,7 +302,8 @@ Pages.saveCustomer = function (e, id) {
    ============================================================ */
 Pages.suppliers = function () {
     const list = DB.list("suppliers").sort((a, b) => a.code.localeCompare(b.code));
-    const rows = list.map(s => `
+    const q = (window.__supSearch || "").toLowerCase();
+    const rows = list.filter(s => !q || (s.code + s.name + (s.english_name || "") + (s.contact_person || "")).toLowerCase().indexOf(q) >= 0).map(s => `
         <div class="master-card">
             <div class="mc-head">
                 <div><div class="mc-name">${h(s.name)}</div><div class="mc-code">${h(s.code)}${s.english_name ? " · " + h(s.english_name) : ""}</div></div>
@@ -306,9 +326,17 @@ Pages.suppliers = function () {
         <div><h1>供应商主档</h1><p>维护供应商基础资料；采购单必须指定供应商。</p></div>
         <div class="head-actions">${can("master.supplier") ? `<a class="btn primary" href="#/master/suppliers/create">+ 新增供应商</a>` : ""}</div>
     </div>
-    <div class="master-grid">${rows || `<div class="empty-state" style="grid-column:1/-1"><div class="big">🏭</div>暂无供应商</div>`}</div>
-    <p class="stat-line">共 ${list.length} 笔供应商</p>`;
+    <div class="toolbar">
+        <div class="search"><input placeholder="搜索代码/名称/联系人..." value="${h(window.__supSearch || "")}" oninput="Pages.supSearch(this.value)"></div>
+    </div>
+    <div class="master-grid">${rows || `<div class="empty-state" style="grid-column:1/-1"><div class="big">🏭</div>${q ? "没有符合的供应商" : "暂无供应商"}</div>`}</div>
+    <p class="stat-line">共 ${rows.length} / ${list.length} 笔供应商</p>`;
     renderShell("suppliers", content, "首页 / 基本资料 / 供应商主档");
+};
+
+Pages.supSearch = function (v) {
+    window.__supSearch = v;
+    Pages.suppliers();
 };
 
 Pages.supplierForm = function (id) {
@@ -359,6 +387,8 @@ Pages.saveSupplier = function (e, id) {
     fd.forEach((v, k) => { d[k] = v; });
     if (!d.code) { toast("请输入供应商代码", "error"); return; }
     if (!d.supplier_name) { toast("请输入供应商名称", "error"); return; }
+    const dupS = DB.find("suppliers", s => s.code === d.code && s.id !== id);
+    if (dupS) { toast("供应商代码已存在，请更换", "error"); return; }
     const payload = {
         code: d.code, name: d.supplier_name, english_name: d.english_name,
         contact_person: d.contact_person, phone: d.phone, fax: d.fax, email: d.email,
@@ -386,7 +416,10 @@ Pages.warehouses = function () {
         const stockMap = DB.stockMap()[w.id] || {};
         const kinds = Object.keys(stockMap).length;
         const qty = Object.keys(stockMap).reduce((s, k) => s + Utils.num(stockMap[k]), 0);
-        const value = Object.keys(stockMap).reduce((s, k) => s + DB.stockValue(k), 0);
+        const value = Object.keys(stockMap).reduce((s, k) => {
+            const it = DB.get("items", k);
+            return s + Utils.num(stockMap[k]) * Utils.num(it ? it.cost : 0);
+        }, 0);
         return `<tr>
             <td><b>${h(w.code)}</b></td>
             <td><b>${h(w.name)}</b></td>
@@ -451,6 +484,8 @@ Pages.saveWarehouse = function (e, id) {
     fd.forEach((v, k) => { d[k] = v; });
     if (!d.code) { toast("请输入仓库代码", "error"); return; }
     if (!d.name) { toast("请输入仓库名称", "error"); return; }
+    const dupW = DB.find("warehouses", w => w.code === d.code && w.id !== id);
+    if (dupW) { toast("仓库代码已存在，请更换", "error"); return; }
     const payload = { code: d.code, name: d.name, contact: d.contact, phone: d.phone, address: d.address, remark: d.remark || "" };
     if (id) {
         DB.update("warehouses", id, payload);
@@ -466,7 +501,20 @@ Pages.saveWarehouse = function (e, id) {
    通用主档删除
    ============================================================ */
 Pages.deleteMaster = function (coll, id, label) {
-    confirmModal(`确定要删除这笔${label}资料吗？`, () => {
+    const r = DB.get(coll, id);
+    if (!r) return;
+    // 引用检查：被单据/商品引用时拒绝删除
+    let ref = null;
+    if (coll === "customers") ref = DB.find("sales_orders", x => x.customer_id === id);
+    else if (coll === "suppliers") ref = DB.find("purchase_orders", x => x.supplier_id === id);
+    else if (coll === "warehouses") ref = DB.find("shipments", x => x.warehouse_id === id) || DB.find("purchase_orders", x => x.warehouse_id === id) || DB.find("inventory_adjusts", x => x.warehouse_id === id) || DB.find("sales_returns", x => x.warehouse_id === id) || DB.find("purchase_returns", x => x.warehouse_id === id);
+    else if (coll === "categories") ref = DB.find("items", x => x.category_id === id) || DB.find("categories", x => x.parent_id === id);
+    else if (coll === "units") ref = DB.find("items", x => x.sales_unit === r.name || x.purchase_unit === r.name || x.stock_unit === r.name);
+    else if (coll === "currencies") ref = DB.find("items", x => x.purchase_currency === r.code) || DB.find("customers", x => x.currency === r.code) || DB.find("suppliers", x => x.currency === r.code);
+    else if (coll === "payment_terms") ref = DB.find("customers", x => x.payment_method === r.name) || DB.find("suppliers", x => x.payment_method === r.name);
+    else if (coll === "shipping_methods") ref = DB.find("sales_orders", x => x.logistics_method === r.name) || DB.find("shipments", x => x.logistics_method === r.name);
+    if (ref) { toast(`该${label}已被引用，无法删除；请先解除关联或改为停用`, "error"); return; }
+    confirmModal(`确定要删除这笔${label}资料吗？此操作不可恢复。`, () => {
         DB.remove(coll, id);
         toast(label + "已删除", "success");
         render();
@@ -591,6 +639,33 @@ Pages.saveSimpleMaster = function (e, coll, id) {
     const fd = new FormData(e.target);
     const d = {};
     fd.forEach((v, k) => { d[k] = v; });
+    // 必填校验（novalidate 后由 JS 兜底）
+    const reqFields = {
+        units: ["name"], currencies: ["code", "name", "rate"],
+        categories: ["name"], shipping_methods: ["name"], payment_terms: ["name"]
+    }[coll] || [];
+    for (const k of reqFields) {
+        const v = k === "rate" ? Utils.num(d[k]) : d[k];
+        if (k === "rate" ? v <= 0 : !v) { toast("请完整填写必填字段", "error"); return; }
+    }
+    // 币别代码去重
+    if (coll === "currencies") {
+        const dup = DB.find("currencies", c => c.code === d.code && c.id !== id);
+        if (dup) { toast("币别代码已存在，请更换", "error"); return; }
+    }
+    // 单位/物流/付款条件名称去重
+    if (coll === "units" && DB.find("units", x => x.name === d.name && x.id !== id)) { toast("单位名称已存在，请更换", "error"); return; }
+    if (coll === "shipping_methods" && DB.find("shipping_methods", x => x.name === d.name && x.id !== id)) { toast("物流方式已存在，请更换", "error"); return; }
+    if (coll === "payment_terms" && DB.find("payment_terms", x => x.name === d.name && x.id !== id)) { toast("付款条件已存在，请更换", "error"); return; }
+    // 分类防循环引用：上级不能是自己或自己的后代
+    if (coll === "categories" && d.parent_id) {
+        if (d.parent_id === id) { toast("上级分类不能选择自己", "error"); return; }
+        let p = DB.get("categories", d.parent_id);
+        while (p && p.parent_id) {
+            if (p.parent_id === id) { toast("上级分类存在循环引用，请重新选择", "error"); return; }
+            p = DB.get("categories", p.parent_id);
+        }
+    }
     const r = id ? DB.get(coll, id) : null;
     const payload = {};
     const fdef = {
@@ -606,6 +681,16 @@ Pages.saveSimpleMaster = function (e, coll, id) {
         else if (k === "is_base") payload[k] = d[k] === "1";
         else payload[k] = d[k] || "";
     });
+    // 本位币唯一：设置新本位币时取消其他本位币；系统至少保留一个本位币
+    if (coll === "currencies") {
+        const hasOtherBase = DB.list("currencies").some(c => c.id !== id && c.is_base);
+        if (!hasOtherBase && !payload.is_base) { toast("系统至少需要保留一个本位币", "error"); return; }
+        if (payload.is_base) {
+            DB.list("currencies").forEach(c => {
+                if (c.id !== id && c.is_base) DB.update("currencies", c.id, { is_base: false });
+            });
+        }
+    }
     if (id) {
         DB.update(coll, id, payload);
         toast("已更新", "success");

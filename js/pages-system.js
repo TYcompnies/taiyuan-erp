@@ -12,7 +12,6 @@ Pages.inventoryOverview = function () {
     const q = (window.__invSearch || "").toLowerCase();
     const warehouses = DB.list("warehouses");
     const items = DB.list("items").sort((a, b) => a.code.localeCompare(b.code));
-    const baseCur = DB.currencyByCode(COMPANY.baseCurrency);
 
     let rows = "";
     warehouses.forEach(wh => {
@@ -41,7 +40,7 @@ Pages.inventoryOverview = function () {
                 <td>${h(it.stock_unit || "-")}</td>
                 <td><div class="stock-bar-wrap">
                     <span class="num" style="width:56px;${qty < 0 ? "color:var(--danger);font-weight:700" : ""}">${qty}</span>
-                    <span class="stock-bar ${cls}"><i style="width:${it.safety_stock > 0 ? Math.min(Math.abs(qty) / it.safety_stock * 100, 100) : 100}%"></i></span>
+                    <span class="stock-bar ${cls}"><i style="width:${it.safety_stock > 0 ? Math.min(Math.max(qty, 0) / it.safety_stock * 100, 100) : 100}%"></i></span>
                 </div></td>
                 <td class="num">${it.safety_stock}</td>
                 <td>${qty < 0 ? badge("负库存") : qty < it.safety_stock ? badge("低库存") : badge("正常")}</td>
@@ -136,7 +135,7 @@ Pages.migrationCenter = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>Excel 导入中心</h1><p>批次导入商品、客户、供应商等主档资料。支持 .csv / .xlsx（首行为表头）。</p></div>
+        <div><h1>Excel 导入中心</h1><p>批次导入商品、客户、供应商等主档资料。支持 .csv（首行为表头；.xlsx 请先在 Excel 中另存为 CSV 再导入）。</p></div>
         <div class="head-actions"><a class="btn ghost" href="#/tools/migration-center" onclick="event.preventDefault();Pages.downloadTemplate()">下载导入模板</a></div>
     </div>
     <div class="panel" style="margin-bottom:16px">
@@ -149,11 +148,11 @@ Pages.migrationCenter = function () {
                         <option value="customers">客户主档</option>
                         <option value="suppliers">供应商主档</option>
                     </select>
-                    <input type="file" id="migFile" accept=".csv,.xlsx" style="max-width:300px">
+                    <input type="file" id="migFile" accept=".csv" style="max-width:300px">
                     <button class="btn primary" onclick="Pages.doMigrate()">开始导入</button>
                 </div>
             </div>
-            <p class="stat-line">商品模板字段：品号, 品名, 规格, 品牌, 分类, 成本, 售价, 安全库存, 销售单位, 采购币别</p>
+            <p class="stat-line">支持 UTF-8 编码的 CSV 文件（Excel 另存为 CSV）。可先下载对应模板，按模板字段填写后导入。</p>
         </div>
     </div>
     <div class="table-wrap master-table-wrap">
@@ -166,18 +165,32 @@ Pages.migrationCenter = function () {
 };
 
 Pages.downloadTemplate = function () {
-    const csv = "品号,品名,规格,品牌,分类,成本,售价,安全库存,销售单位,采购币别\n605900001,越南1合1黑咖啡,,VINACAFE,咖啡饮品,239,320,20,箱,CNY\n";
+    const sel = document.getElementById("migType");
+    const type = sel ? sel.value : "items";
+    let csv = "", name = "";
+    if (type === "customers") {
+        csv = "客户代码,客户名称,联系人,电话,地址\nCUS000001,示例客户,张三,13800000000,浙江省义乌市\n";
+        name = "客户导入模板.csv";
+    } else if (type === "suppliers") {
+        csv = "供应商代码,供应商名称,联系人,电话,地址\nSUP000001,示例供应商,李四,13900000000,浙江省义乌市\n";
+        name = "供应商导入模板.csv";
+    } else {
+        csv = "品号,品名,规格,品牌,分类,成本,售价,安全库存,销售单位,采购币别\n605900001,越南1合1黑咖啡,,VINACAFE,咖啡饮品,239,320,20,箱,CNY\n";
+        name = "商品导入模板.csv";
+    }
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "商品导入模板.csv";
+    a.download = name;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
 
 Pages.doMigrate = function () {
     const type = document.getElementById("migType").value;
     const file = document.getElementById("migFile").files[0];
     if (!file) { toast("请先选择文件", "error"); return; }
+    if (/\.xlsx?$/i.test(file.name)) { toast("暂不支持直接导入 .xlsx，请先在 Excel 中另存为 CSV（UTF-8）再导入", "error"); return; }
     const reader = new FileReader();
     reader.onload = function (ev) {
         let text = ev.target.result;
@@ -276,7 +289,7 @@ Pages.systemBackup = function () {
         <td class="num">${h(b.size)}</td>
         <td>${h(b.note || "-")}</td>
         <td class="action-col">
-            <button class="link-btn" onclick="Pages.restoreBackup('${b.id}')">恢复</button>
+            ${b.snapshot ? `<button class="link-btn" onclick="Pages.restoreBackup('${b.id}')">恢复</button>` : `<span class="badge gray">无快照</span>`}
             <button class="link-btn danger" onclick="Pages.deleteBackup('${b.id}')">删除</button>
         </td>
     </tr>`).join("");
@@ -305,7 +318,9 @@ Pages.systemBackup = function () {
 };
 
 Pages.createBackup = function () {
-    const data = DB._mem;
+    const data = JSON.parse(JSON.stringify(DB._mem));
+    // 清理备份记录中的历史快照，避免快照嵌套导致存储体积无限膨胀
+    (data.backups || []).forEach(b => { delete b.snapshot; });
     const size = Math.max(1, Math.round(JSON.stringify(data).length / 1024));
     DB.insert("backups", {
         no: nextDocNo("BK", "backups"), date: Utils.now(),
@@ -323,6 +338,7 @@ Pages.restoreBackup = function (id) {
     confirmModal(`确定要从备份 ${b.no}（${b.date}）恢复数据吗？当前数据将被覆盖。`, () => {
         try {
             const data = JSON.parse(b.snapshot);
+            data.backups = DB.list("backups"); // 保留现有备份历史，避免恢复后丢失快照清单
             localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(data));
             DB._mem = data;
             DB._loaded = true;
@@ -346,6 +362,7 @@ Pages.exportData = function () {
     a.href = URL.createObjectURL(blob);
     a.download = "钛沅ERP_备份_" + Utils.today() + ".json";
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast("数据已导出", "success");
 };
 
@@ -414,6 +431,16 @@ Pages.users = function () {
 Pages.deleteUser = function (id) {
     const u = DB.get("users", id);
     if (!u) return;
+    const me = DB.currentUser();
+    if (me && me.id === id) { toast("不能删除当前登录的账号", "error"); return; }
+    const role = DB.get("roles", u.role_id);
+    if (role && role.name === "系统管理员") {
+        const admins = DB.list("users").filter(x => {
+            const r = DB.get("roles", x.role_id);
+            return r && r.name === "系统管理员" && x.status !== "停用";
+        });
+        if (admins.length <= 1) { toast("至少保留一位启用的系统管理员账号", "error"); return; }
+    }
     confirmModal(`确定要删除用户 ${u.username} 吗？`, () => {
         DB.remove("users", id);
         toast("用户已删除", "success");
@@ -460,7 +487,25 @@ Pages.saveUser = function (e, id) {
     if (!d.username) { toast("请输入账号", "error"); return; }
     if (!d.name) { toast("请输入姓名", "error"); return; }
     if (!d.role_id) { toast("请选择角色", "error"); return; }
+    if (!d.password) { toast("请输入密码", "error"); return; }
     const payload = { username: d.username, password: d.password, name: d.name, role_id: d.role_id, email: d.email || "", phone: d.phone || "", status: d.status };
+    // 最后一个管理员保护：不允许把唯一的启用的系统管理员改为其他角色或停用
+    if (id) {
+        const old = DB.get("users", id);
+        const oldRole = old ? DB.get("roles", old.role_id) : null;
+        const newRole = DB.get("roles", d.role_id);
+        const isAdminRole = (r) => r && r.name === "系统管理员";
+        if (isAdminRole(oldRole)) {
+            const otherAdmins = DB.list("users").filter(x => {
+                const r = DB.get("roles", x.role_id);
+                return isAdminRole(r) && x.id !== id && x.status !== "停用";
+            }).length;
+            if (otherAdmins < 1) {
+                if (!isAdminRole(newRole)) { toast("至少保留一位启用的系统管理员账号，不能变更其角色", "error"); return; }
+                if (d.status === "停用") { toast("至少保留一位启用的系统管理员账号，不能停用", "error"); return; }
+            }
+        }
+    }
     if (id) {
         DB.update("users", id, payload);
         toast("用户已更新", "success");
