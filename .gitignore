@@ -1,0 +1,10 @@
+# 依赖与测试产物不入库
+node_modules/
+shots/
+*.log
+
+# 本地服务器与编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
