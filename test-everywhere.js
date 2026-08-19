@@ -87,15 +87,21 @@ const BASE = "http://127.0.0.1:8902/";
         else { pass++; console.log("  PASS " + label + " 无JS错误"); }
     }
 
-    console.log("== 2. 编辑路由不跳主页 ==");
+    console.log("== 2. 销货订单查看页 + 编辑路由 ==");
     await page.goto(BASE + "#/sales-orders");
     await page.waitForTimeout(300);
-    const editHref = await page.locator('#soBody a[href^="#/sales-orders/"]').first().getAttribute("href");
-    const soId = editHref.split("/")[2];
-    await page.goto(BASE + editHref);
+    const viewHref = await page.locator('#soBody a[href^="#/sales-orders/"]').first().getAttribute("href");
+    const soId = viewHref.split("/")[2];
+    await page.goto(BASE + viewHref);
     await page.waitForTimeout(400);
-    ok("销货订单编辑页正常", (await page.locator(".content h2").first().textContent().catch(() => "")).includes("编辑"), "跳回主页或异常");
+    ok("销货订单查看页正常", (await page.locator(".content h1").first().textContent().catch(() => "")).includes("销货订单"), "跳回主页或异常");
+    ok("查看页为只读（无表单）", await page.locator(".content form").count() === 0, "仍有表单");
+    ok("查看页有打印按钮", await page.locator('.content button:has-text("打印")').count() > 0, "无打印按钮");
+    // 从查看页点编辑，验证编辑路由不跳主页
+    await page.click('.content a[href$="/edit"]');
+    await page.waitForTimeout(400);
     ok("编辑页不跳主页", !(await page.locator(".content h1").first().textContent().catch(() => "")).includes("检核仪表板"));
+    ok("编辑页正常", (await page.locator(".content h2").first().textContent().catch(() => "")).includes("编辑"), "不是编辑页");
 
     console.log("== 3. 出货单详情页 ==");
     await page.goto(BASE + "#/shipments");
