@@ -1349,7 +1349,7 @@ Pages.salesReturnForm = function () {
         <section class="form-section">
             <div class="form-grid section-grid">
                 <div class="form-item"><label>销货订单<b>*</b></label>
-                    <select name="sales_order_id" id="srSo" required onchange="Pages.srLoadOrder()"><option value="">请选择已出货订单</option>${soOpts}</select></div>
+                    <select name="sales_order_id" id="srSo" required onchange="Pages.srLoadOrder(true)"><option value="">请选择已出货订单</option>${soOpts}</select></div>
                 <div class="form-item"><label>类型<b>*</b></label>
                     <select name="type" required><option>退回</option><option>折让</option></select></div>
                 <div class="form-item"><label>退回日期</label><input type="date" name="return_date" value="${Utils.today()}"></div>
@@ -1403,6 +1403,8 @@ Pages.srLoadOrder = function (forceLines) {
             <td class="line-amount num">${fmt(l.amount)}</td>
             <td><input name="line_remark[]" value=""></td>
             <td class="action-col"><button class="link-btn danger" type="button" onclick="this.closest('tr').remove();Pages.updateSRTotal()">移除</button></td>`;
+        // 数量输入实时重算行金额与合计（联动）
+        tr.querySelector('[name="qty[]"]').addEventListener("input", Pages.updateSRTotal);
         tbody.appendChild(tr);
     });
     Pages.updateSRTotal();
@@ -1546,7 +1548,7 @@ Pages.purchaseReturnForm = function () {
         <section class="form-section">
             <div class="form-grid section-grid">
                 <div class="form-item"><label>采购单<b>*</b></label>
-                    <select name="purchase_order_id" id="prPo" required onchange="Pages.prLoadOrder()"><option value="">请选择已进货采购单</option>${poOpts}</select></div>
+                    <select name="purchase_order_id" id="prPo" required onchange="Pages.prLoadOrder(true)"><option value="">请选择已进货采购单</option>${poOpts}</select></div>
                 <div class="form-item"><label>类型<b>*</b></label><select name="type" required><option>退回</option><option>折让</option></select></div>
                 <div class="form-item"><label>退回日期</label><input type="date" name="return_date" value="${Utils.today()}"></div>
                 <div class="form-item"><label>供应商</label><input id="prSupplier" readonly></div>
@@ -1598,6 +1600,8 @@ Pages.prLoadOrder = function (forceLines) {
             <td class="line-amount num">${fmt(l.amount)}</td>
             <td><input name="line_remark[]" value=""></td>
             <td class="action-col"><button class="link-btn danger" type="button" onclick="this.closest('tr').remove();Pages.updatePRTotal()">移除</button></td>`;
+        // 数量输入实时重算行金额与合计（联动）
+        tr.querySelector('[name="qty[]"]').addEventListener("input", Pages.updatePRTotal);
         tbody.appendChild(tr);
     });
     Pages.updatePRTotal();

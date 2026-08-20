@@ -68,7 +68,8 @@ Pages.receivePayment = function (id) {
         <div class="modal-body">
             <div class="form-item"><label>应收金额</label><input value="${fmt(o.invoice_amount)}" readonly></div>
             <div class="form-item" style="margin-top:10px"><label>未收金额</label><input value="${fmt(outstanding)}" readonly></div>
-            <div class="form-item" style="margin-top:10px"><label>本次收款金额<b>*</b></label><input type="number" id="payAmount" value="${outstanding.toFixed(2)}" step="0.01" min="0"></div>
+            <div class="form-item" style="margin-top:10px"><label>本次收款金额<b>*</b></label><input type="number" id="payAmount" value="${outstanding.toFixed(2)}" step="0.01" min="0" oninput="Pages.updatePayRemain(${outstanding})"></div>
+            <div class="form-item" style="margin-top:10px"><label>收后未收余额</label><input id="payRemain" value="${fmt(outstanding)}" readonly style="color:var(--green);font-weight:700"></div>
             <div class="form-item" style="margin-top:10px"><label>收款方式</label><select id="payMethod">${feeMethodOptions("银行转账")}</select></div>
             <div class="form-item" style="margin-top:10px"><label>收款日期</label><input type="date" id="payDate" value="${Utils.today()}"></div>
         </div>
@@ -78,6 +79,13 @@ Pages.receivePayment = function (id) {
         </div>
     </div>`;
     document.body.appendChild(mask);
+};
+
+// 收款弹窗：输入金额后实时更新收后未收余额（联动）
+Pages.updatePayRemain = function (outstanding) {
+    const amt = Utils.num(document.getElementById("payAmount").value);
+    const remainEl = document.getElementById("payRemain");
+    if (remainEl) remainEl.value = fmt(Math.max(Utils.num(outstanding) - amt, 0));
 };
 
 Pages.doSavePayment = function (id) {
@@ -167,7 +175,8 @@ Pages.payPO = function (id) {
         <div class="modal-body">
             <div class="form-item"><label>应付金额</label><input value="${fmt(o.amount)}" readonly></div>
             <div class="form-item" style="margin-top:10px"><label>未付金额</label><input value="${fmt(unpaid)}" readonly></div>
-            <div class="form-item" style="margin-top:10px"><label>本次付款金额<b>*</b></label><input type="number" id="payAmountPO" value="${unpaid.toFixed(2)}" step="0.01" min="0"></div>
+            <div class="form-item" style="margin-top:10px"><label>本次付款金额<b>*</b></label><input type="number" id="payAmountPO" value="${unpaid.toFixed(2)}" step="0.01" min="0" oninput="Pages.updatePayRemainPO(${unpaid})"></div>
+            <div class="form-item" style="margin-top:10px"><label>付后未付余额</label><input id="payRemainPO" value="${fmt(unpaid)}" readonly style="color:var(--green);font-weight:700"></div>
             <div class="form-item" style="margin-top:10px"><label>付款方式</label><select id="payMethodPO">${feeMethodOptions("银行转账")}</select></div>
             <div class="form-item" style="margin-top:10px"><label>付款日期</label><input type="date" id="payDatePO" value="${Utils.today()}"></div>
         </div>
@@ -177,6 +186,13 @@ Pages.payPO = function (id) {
         </div>
     </div>`;
     document.body.appendChild(mask);
+};
+
+// 付款弹窗：输入金额后实时更新付后未付余额（联动）
+Pages.updatePayRemainPO = function (unpaid) {
+    const amt = Utils.num(document.getElementById("payAmountPO").value);
+    const remainEl = document.getElementById("payRemainPO");
+    if (remainEl) remainEl.value = fmt(Math.max(Utils.num(unpaid) - amt, 0));
 };
 
 Pages.doSavePayPO = function (id) {
