@@ -393,7 +393,13 @@ Pages.doShip = function (id) {
         return qty > 0 && stock < qty;
     });
     if (shortLines.length) {
-        toast(`库存不足提醒：${shortLines.map(l => l.code).join("、")} 出货后会产生负库存`, "error");
+        const unitTxt = shortLines.map(l => {
+            const it = DB.get("items", l.item_id);
+            const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+            const u = it && it.stock_unit ? it.stock_unit : "";
+            return `${l.code}(需 ${Utils.num(l.qty) * rate} ${u}，现有 ${DB.stockOf(whId, l.item_id)} ${u})`;
+        }).join("、");
+        toast(`库存不足提醒：${unitTxt} 出货后会产生负库存`, "error");
     }
 
     // 扣库存（按销售→库存换算率换算为库存单位数量）
@@ -1340,8 +1346,10 @@ Pages.updateAdjPreview = function (row) {
     if (!sel || !sel.value) return;
     const whId = document.querySelector('[name="warehouse_id"]').value;
     const before = DB.stockOf(whId, sel.value);
-    row.querySelector(".before-qty").textContent = before;
-    row.querySelector(".after-qty").textContent = Utils.round(before + qty, 4);
+    const it = DB.get("items", sel.value);
+    const u = it && it.stock_unit ? it.stock_unit : "";
+    row.querySelector(".before-qty").textContent = before + " " + u;
+    row.querySelector(".after-qty").textContent = Utils.round(before + qty, 4) + " " + u;
 };
 
 Pages.bindAdjLineEvents = function (row) {

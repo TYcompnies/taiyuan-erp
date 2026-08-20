@@ -455,7 +455,7 @@ function renderDashboard() {
     }).join("") || `<p class="empty" style="padding:14px 18px;color:var(--muted);font-size:12.5px">没有待进货采购单</p>`;
 
     const lowStockHtml = lowStock.slice(0, 8).map(i =>
-        `<a href="#/inventory/inventory_overview"><b>${h(i.code)}</b><span>${h(i.name)}</span><em>${DB.totalStock(i.id)} / ${i.safety_stock}</em></a>`
+        `<a href="#/inventory/inventory_overview"><b>${h(i.code)}</b><span>${h(i.name)}</span><em>${DB.totalStock(i.id)} ${h(i.stock_unit || "")} / ${i.safety_stock} ${h(i.stock_unit || "")}</em></a>`
     ).join("");
 
     const cleanHtml = `<h3>商品成本缺漏</h3>` +
@@ -463,7 +463,7 @@ function renderDashboard() {
         `<h3>商品采购币别缺漏</h3>` +
         (items.filter(i => !i.disabled && !i.purchase_currency).length ? items.filter(i => !i.disabled && !i.purchase_currency).map(i => `<p><a href="#/master/items/${i.id}/edit">${h(i.code)} - ${h(i.name)}</a></p>`).join("") : `<p class="empty">没有币别缺漏。</p>`) +
         `<h3>负库存</h3>` +
-        (negStock.length ? negStock.slice(0, 8).map(i => `<p><a href="#/inventory/inventory_overview">${h(i.code)} - ${h(i.name)}：${DB.totalStock(i.id)}</a></p>`).join("") : `<p class="empty">没有负库存商品。</p>`) +
+        (negStock.length ? negStock.slice(0, 8).map(i => `<p><a href="#/inventory/inventory_overview">${h(i.code)} - ${h(i.name)}：${DB.totalStock(i.id)} ${h(i.stock_unit || "")}</a></p>`).join("") : `<p class="empty">没有负库存商品。</p>`) +
         `<h3>未过账传票</h3>` +
         (unposted ? DB.list("vouchers").filter(v => v.status === "未过账").map(v => `<p><a href="#/accounting/vouchers">${h(v.no)} - ${h(v.source_no || "")} - ${fmt(v.lines.reduce((s, l) => s + Utils.num(l.debit), 0))}</a></p>`).join("") : `<p class="empty">没有未过账传票。</p>`);
 

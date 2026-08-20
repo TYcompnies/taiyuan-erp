@@ -26,9 +26,9 @@ Pages.items = function () {
             <td>${h(i.purchase_currency || "-")}</td>
             <td>
                 <div class="stock-bar-wrap">
-                    <span class="num" style="width:52px;${stock < 0 ? "color:var(--danger);font-weight:700" : ""}">${stock}</span>
+                    <span class="num" style="width:88px;${stock < 0 ? "color:var(--danger);font-weight:700" : ""}">${stock} <small style="color:var(--muted)">${h(i.stock_unit || "")}</small></span>
                     <span class="stock-bar ${stockCls}"><i style="width:${pct}%"></i></span>
-                    <span style="color:var(--muted);font-size:12px">${i.safety_stock}</span>
+                    <span style="color:var(--muted);font-size:12px">${i.safety_stock} <small>${h(i.stock_unit || "")}</small></span>
                 </div>
             </td>
             <td>${i.disabled ? badge("停用") : badge("启用")}</td>
