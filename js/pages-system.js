@@ -17,7 +17,8 @@ Pages.inventoryOverview = function () {
     warehouses.forEach(wh => {
         if (whFilter && wh.id !== whFilter) return;
         const stock = DB.stockMap()[wh.id] || {};
-        const whItems = items.filter(i => stock[i.id] !== undefined).sort((a, b) => a.code.localeCompare(b.code));
+        // 显示全部启用商品（含 0 库存），数量以库存单位为准，避免商品「消失」造成判读困惑
+        const whItems = items.filter(i => !i.disabled).sort((a, b) => a.code.localeCompare(b.code));
         whItems.forEach(it => {
             const qty = Utils.num(stock[it.id]);
             const cost = Utils.num(it.cost);
@@ -39,10 +40,10 @@ Pages.inventoryOverview = function () {
                 <td class="num">${fmt(costBase)}</td>
                 <td>${h(it.stock_unit || "-")}</td>
                 <td><div class="stock-bar-wrap">
-                    <span class="num" style="width:56px;${qty < 0 ? "color:var(--danger);font-weight:700" : ""}">${qty}</span>
+                    <span class="num" style="width:76px;${qty < 0 ? "color:var(--danger);font-weight:700" : ""}">${qty} <small style="color:var(--muted)">${h(it.stock_unit || "")}</small></span>
                     <span class="stock-bar ${cls}"><i style="width:${it.safety_stock > 0 ? Math.min(Math.max(qty, 0) / it.safety_stock * 100, 100) : 100}%"></i></span>
                 </div></td>
-                <td class="num">${it.safety_stock}</td>
+                <td class="num">${it.safety_stock} <small style="color:var(--muted)">${h(it.stock_unit || "")}</small></td>
                 <td>${qty < 0 ? badge("负库存") : qty < it.safety_stock ? badge("低库存") : badge("正常")}</td>
                 <td class="num">${fmt(value)}</td>
                 <td class="num">${rate}</td>
@@ -83,15 +84,18 @@ Pages.inventorySafety = function () {
         const total = DB.totalStock(it.id);
         const short = it.safety_stock - total;
         const cls = total < 0 ? "red" : short > 0 ? "orange" : "green";
+        // 不足数量：负库存显示「缺货」；不足显示 +N；充足显示 0（避免负数误解）
+        const shortTxt = total < 0 ? "缺货" : short > 0 ? "+" + short : "0";
+        const unit = it.stock_unit || it.sales_unit || "";
         return `<tr>
             <td><b>${h(it.code)}</b></td>
             <td>${h(it.name)}</td>
             <td>${h(it.brand || "-")}</td>
-            <td>${h(it.sales_unit || "-")}</td>
-            <td class="num">${total}</td>
-            <td class="num">${it.safety_stock}</td>
+            <td>${h(unit)}</td>
+            <td class="num">${total} <small style="color:var(--muted)">${h(unit)}</small></td>
+            <td class="num">${it.safety_stock} <small style="color:var(--muted)">${h(unit)}</small></td>
             <td class="num">${it.max_stock || "-"}</td>
-            <td class="num" style="color:${cls === "green" ? "var(--green)" : cls === "orange" ? "var(--orange)" : "var(--danger)"};font-weight:700">${short > 0 ? "+" + short : short <= 0 && total >= 0 ? short : "缺货"}</td>
+            <td class="num" style="color:${cls === "green" ? "var(--green)" : cls === "orange" ? "var(--orange)" : "var(--danger)"};font-weight:700">${shortTxt}</td>
             <td>${cls === "green" ? badge("库存充足") : cls === "orange" ? badge("低于安全库存") : badge("负库存")}</td>
             <td class="action-col"><a class="link-btn" href="#/master/items/${it.id}/edit">调整安全库存</a></td>
         </tr>`;

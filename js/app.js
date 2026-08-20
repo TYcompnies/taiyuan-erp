@@ -154,7 +154,7 @@ function badge(status) {
         "未出货": "blue", "已出货": "green", "已取消": "red",
         "draft": "orange", "shipped": "green", "received": "green", "cancelled": "red",
         "已进货": "green", "未进货": "orange",
-        "已收款": "green", "未收款": "orange",
+        "已收款": "green", "未收款": "orange", "部分收款": "blue",
         "已付清": "green", "部分付款": "orange", "未付款": "red",
         "已开": "green", "未开": "gray", "作废": "red", "折让": "purple", "退回": "red",
         "已过账": "green", "未过账": "orange",
@@ -373,7 +373,9 @@ function renderDashboard() {
     const curMissingCount = DB.list("currencies").filter(c => !c.is_base && (!c.rate || c.rate <= 0)).length;
 
     // 本月损益（本位币口径：外币乘汇率、成本乘销售→库存换算率、冲回退货成本，与损益表一致）
-    const shipped = orders.filter(o => o.status === "shipped" && o.order_date >= month);
+    // 联动：收入按「出货日期」归属，与损益表口径一致（跨月订单以实际出货月份计入）
+    const shipIds = new Set(DB.list("shipments").filter(s => s.ship_date >= month).map(s => s.sales_order_id));
+    const shipped = orders.filter(o => o.status === "shipped" && shipIds.has(o.id));
     const revenue = shipped.reduce((s, o) => s + toCNY(o.invoice_amount, o.currency), 0);
     const cogs = shipped.reduce((s, o) => s + o.lines.reduce((a, l) => {
         const it = DB.get("items", l.item_id);
@@ -389,22 +391,24 @@ function renderDashboard() {
     const expenses = DB.list("expenses").filter(e => e.date >= month).reduce((s, e) => s + Utils.num(e.amount), 0);
     const profit = Utils.round((revenue - returnTotal) - (cogs - returnCost) - expenses);
 
-    // 应收应付（扣除已收/已付与退货/退回冲销）
+    // 应收应付（扣除已收/已付与退货/退回冲销；外币折本位币，与应收账款/应付账款页 KPI 口径一致）
     const arReturnMap = {};
     DB.list("sales_returns").filter(r => r.offset_receivable).forEach(r => {
         arReturnMap[r.sales_order_id] = (arReturnMap[r.sales_order_id] || 0) + Utils.num(r.total_amount);
     });
-    const arUnpaid = orders.filter(o => o.status === "shipped")
-        .reduce((s, o) => s + Math.max(Utils.num(o.invoice_amount) - Utils.num(o.received_amount) - (arReturnMap[o.id] || 0), 0), 0);
-    const arBalance = orders.filter(o => o.status === "shipped")
-        .reduce((s, o) => s + Utils.num(o.invoice_amount), 0);
+    const shippedOrders = orders.filter(o => o.status === "shipped");
+    const arUnpaid = shippedOrders
+        .reduce((s, o) => s + toCNY(Math.max(Utils.num(o.invoice_amount) - Utils.num(o.received_amount) - (arReturnMap[o.id] || 0), 0), o.currency), 0);
+    const arBalance = shippedOrders
+        .reduce((s, o) => s + toCNY(Utils.num(o.invoice_amount), o.currency), 0);
     const apReturnMap = {};
     DB.list("purchase_returns").filter(r => r.offset_payable).forEach(r => {
         apReturnMap[r.purchase_order_id] = (apReturnMap[r.purchase_order_id] || 0) + Utils.num(r.amount);
     });
-    const apUnpaid = pos.filter(o => o.status === "received")
-        .reduce((s, o) => s + Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (apReturnMap[o.id] || 0), 0), 0);
-    const apBalance = pos.filter(o => o.status === "received").reduce((s, o) => s + Utils.num(o.amount), 0);
+    const receivedPos = pos.filter(o => o.status === "received");
+    const apUnpaid = receivedPos
+        .reduce((s, o) => s + toCNY(Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (apReturnMap[o.id] || 0), 0), o.currency), 0);
+    const apBalance = receivedPos.reduce((s, o) => s + toCNY(Utils.num(o.amount), o.currency), 0);
     const stockValue = items.reduce((s, i) => s + DB.stockValue(i.id), 0);
     const unposted = DB.list("vouchers").filter(v => v.status === "未过账").length;
     const lastBackup = DB.list("backups").sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -515,7 +519,7 @@ function renderDashboard() {
             </div>
         </div>
         <div class="panel">
-            <div class="panel-title"><h2>账款状态</h2><a href="#/accounting/accounts-receivable">查看应收应付</a></div>
+            <div class="panel-title"><h2>账款状态（本位币）</h2><a href="#/accounting/accounts-receivable">查看应收应付</a></div>
             <div class="mini-metrics">
                 <div><span>未收应收</span><strong>${fmt(arUnpaid)}</strong></div>
                 <div><span>未付应付</span><strong>${fmt(apUnpaid)}</strong></div>

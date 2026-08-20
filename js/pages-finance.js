@@ -19,31 +19,36 @@ Pages.accountsReceivable = function () {
         const received = Utils.num(o.received_amount) || 0;
         const outstanding = Math.max(Utils.num(o.invoice_amount) - received - (returnMap[o.id] || 0), 0);
         const days = Math.max(0, Math.round((new Date(Utils.today()) - new Date(o.order_date)) / 86400000));
+        // 外币金额附本位币换算，与报表口径联动
+        const fx = o.currency && o.currency !== COMPANY.baseCurrency;
+        const cnv = (v) => fx ? `<br><small style="color:var(--muted)">≈ ${fmt(toCNY(v, o.currency))} ${COMPANY.baseCurrency}</small>` : "";
         return `<tr>
             <td><b>${h(o.no)}</b></td>
             <td>${h(o.order_date)}</td>
             <td>${h(cu ? cu.name : "")}</td>
             <td>${h(o.currency)}</td>
-            <td class="num">${fmt(o.invoice_amount)}</td>
-            <td class="num">${fmt(received)}</td>
-            <td class="num" style="color:${outstanding > 0 ? "var(--danger)" : "var(--green)"};font-weight:700">${fmt(outstanding)}</td>
+            <td class="num">${fmt(o.invoice_amount)}${cnv(o.invoice_amount)}</td>
+            <td class="num">${fmt(received)}${cnv(received)}</td>
+            <td class="num" style="color:${outstanding > 0 ? "var(--danger)" : "var(--green)"};font-weight:700">${fmt(outstanding)}${cnv(outstanding)}</td>
             <td>${outstanding <= 0 ? badge("已收款") : days > 60 ? badge("逾期超60天") : days > 30 ? badge("逾期") : badge("未收款")}</td>
             <td class="num">${days}天</td>
             <td class="action-col">${outstanding > 0 ? `<button class="link-btn" onclick="Pages.receivePayment('${o.id}')">登记收款</button>` : ""}</td>
         </tr>`;
     }).join("");
 
-    const totalReceivable = orders.reduce((s, o) => s + Math.max(Utils.num(o.invoice_amount) - Utils.num(o.received_amount) - (returnMap[o.id] || 0), 0), 0);
+    const totalReceivable = orders.reduce((s, o) => s + toCNY(Math.max(Utils.num(o.invoice_amount) - Utils.num(o.received_amount) - (returnMap[o.id] || 0), 0), o.currency), 0);
+    // 已收款笔数：已收金额 ≥ 净应收（应收扣退货冲减），口径与未收一致
+    const paidCount = orders.filter(o => Utils.num(o.received_amount) >= Math.max(Utils.num(o.invoice_amount) - (returnMap[o.id] || 0), 0) - 0.001).length;
 
     const content = `
     <div class="page-head">
-        <div><h1>应收账款</h1><p>追踪已出货订单的未收款；登记收款后金额实时更新。</p></div>
+        <div><h1>应收账款</h1><p>追踪已出货订单的未收款；登记收款后金额实时更新，外币附本位币换算（${COMPANY.baseCurrency}）。</p></div>
         <div class="head-actions"><a class="btn ghost" href="#/accounting/income-statement">损益表</a></div>
     </div>
     <div class="kpi-grid">
-        <div class="kpi-card"><span>未收应收</span><strong style="color:var(--danger)">${fmt(totalReceivable)}</strong><p>所有已出货未收款</p></div>
+        <div class="kpi-card"><span>未收应收（本位币）</span><strong style="color:var(--danger)">${fmt(totalReceivable)}</strong><p>所有已出货未收款折合 ${COMPANY.baseCurrency}</p></div>
         <div class="kpi-card"><span>应收笔数</span><strong>${orders.length}</strong><p>已出货订单数</p></div>
-        <div class="kpi-card"><span>已收款笔数</span><strong>${orders.filter(o => Utils.num(o.received_amount) >= Utils.num(o.invoice_amount)).length}</strong><p>全额收款订单</p></div>
+        <div class="kpi-card"><span>已收款笔数</span><strong>${paidCount}</strong><p>全额收款订单（含退货冲减）</p></div>
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
@@ -99,7 +104,10 @@ Pages.doSavePayment = function (id) {
     const outstanding = Math.max(Utils.num(o.invoice_amount) - received - returnTotal, 0);
     if (amt > outstanding + 0.001) { toast("收款金额不能超过未收金额（含退货冲减）", "error"); return; }
     const newReceived = Utils.round(received + amt);
-    const payment_status = newReceived >= Utils.num(o.invoice_amount) ? "paid" : "partial";
+    // 收款状态联动：净应收 = 应收 - 退货冲减；全部收足即视为已收款（口径与应收账款页一致）
+    const allReturns = DB.list("sales_returns").filter(r => r.sales_order_id === id && r.offset_receivable).reduce((s, r) => s + Utils.num(r.total_amount), 0);
+    const netInv = Math.max(Utils.num(o.invoice_amount) - allReturns, 0);
+    const payment_status = newReceived >= netInv - 0.001 ? "paid" : (newReceived > 0 ? "partial" : "unpaid");
     // 保存收款方式与收款日期，形成收款流水可追溯
     const method = document.getElementById("payMethod") ? document.getElementById("payMethod").value : "";
     const pDate = document.getElementById("payDate") ? document.getElementById("payDate").value : Utils.today();
@@ -127,31 +135,36 @@ Pages.accountsPayable = function () {
         const sp = DB.get("suppliers", o.supplier_id);
         const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (returnMap[o.id] || 0), 0);
         const days = Math.max(0, Math.round((new Date(Utils.today()) - new Date(o.po_date)) / 86400000));
+        // 外币金额附本位币换算，与报表口径联动
+        const fx = o.currency && o.currency !== COMPANY.baseCurrency;
+        const cnv = (v) => fx ? `<br><small style="color:var(--muted)">≈ ${fmt(toCNY(v, o.currency))} ${COMPANY.baseCurrency}</small>` : "";
         return `<tr>
             <td><b>${h(o.no)}</b></td>
             <td>${h(o.po_date)}</td>
             <td>${h(sp ? sp.name : "")}</td>
             <td>${h(o.currency)}</td>
-            <td class="num">${fmt(o.amount)}</td>
-            <td class="num">${fmt(o.paid_amount)}</td>
-            <td class="num" style="color:${unpaid > 0 ? "var(--danger)" : "var(--green)"};font-weight:700">${fmt(unpaid)}</td>
+            <td class="num">${fmt(o.amount)}${cnv(o.amount)}</td>
+            <td class="num">${fmt(o.paid_amount)}${cnv(o.paid_amount)}</td>
+            <td class="num" style="color:${unpaid > 0 ? "var(--danger)" : "var(--green)"};font-weight:700">${fmt(unpaid)}${cnv(unpaid)}</td>
             <td>${unpaid <= 0 ? badge("已付清") : badge("未付款")}</td>
             <td class="num">${days}天</td>
             <td class="action-col">${unpaid > 0 ? `<button class="link-btn" onclick="Pages.payPO('${o.id}')">登记付款</button>` : ""}</td>
         </tr>`;
     }).join("");
 
-    const totalPayable = pos.reduce((s, o) => s + Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (returnMap[o.id] || 0), 0), 0);
+    const totalPayable = pos.reduce((s, o) => s + toCNY(Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (returnMap[o.id] || 0), 0), o.currency), 0);
+    // 已付清笔数：已付金额 ≥ 净应付（应付扣退回冲减），口径与未付一致
+    const paidCount = pos.filter(o => Utils.num(o.paid_amount) >= Math.max(Utils.num(o.amount) - (returnMap[o.id] || 0), 0) - 0.001).length;
 
     const content = `
     <div class="page-head">
-        <div><h1>应付账款</h1><p>追踪已进货采购单的未付款；登记付款后金额实时更新。</p></div>
+        <div><h1>应付账款</h1><p>追踪已进货采购单的未付款；登记付款后金额实时更新，外币附本位币换算（${COMPANY.baseCurrency}）。</p></div>
         <div class="head-actions"><a class="btn ghost" href="#/accounting/income-statement">损益表</a></div>
     </div>
     <div class="kpi-grid">
-        <div class="kpi-card"><span>未付应付</span><strong style="color:var(--danger)">${fmt(totalPayable)}</strong><p>所有已进货未付款</p></div>
+        <div class="kpi-card"><span>未付应付（本位币）</span><strong style="color:var(--danger)">${fmt(totalPayable)}</strong><p>所有已进货未付款折合 ${COMPANY.baseCurrency}</p></div>
         <div class="kpi-card"><span>应付笔数</span><strong>${pos.length}</strong><p>已进货采购单数</p></div>
-        <div class="kpi-card"><span>已付清笔数</span><strong>${pos.filter(o => Utils.num(o.paid_amount) >= Utils.num(o.amount)).length}</strong><p>全额付款采购单</p></div>
+        <div class="kpi-card"><span>已付清笔数</span><strong>${paidCount}</strong><p>全额付款采购单（含退回冲减）</p></div>
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
@@ -205,7 +218,10 @@ Pages.doSavePayPO = function (id) {
     const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - returnTotal, 0);
     if (amt > unpaid + 0.001) { toast("付款金额不能超过未付金额（含退回冲减）", "error"); return; }
     const newPaid = Utils.round(Utils.num(o.paid_amount) + amt);
-    const payment_status = newPaid >= Utils.num(o.amount) ? "paid" : "partial";
+    // 付款状态联动：净应付 = 应付 - 退回冲减；全部付足即视为已付清（口径与应付账款页一致）
+    const allPRs = DB.list("purchase_returns").filter(r => r.purchase_order_id === id && r.offset_payable).reduce((s, r) => s + Utils.num(r.amount), 0);
+    const netInv = Math.max(Utils.num(o.amount) - allPRs, 0);
+    const payment_status = newPaid >= netInv - 0.001 ? "paid" : (newPaid > 0 ? "partial" : "unpaid");
     // 保存付款方式与付款日期，形成付款流水可追溯
     const method = document.getElementById("payMethodPO") ? document.getElementById("payMethodPO").value : "";
     const pDate = document.getElementById("payDatePO") ? document.getElementById("payDatePO").value : Utils.today();
@@ -527,7 +543,9 @@ Pages.incomeStatement = function () {
     const monthOpts = months.map(m => `<option value="${m}" ${m === month ? "selected" : ""}>${m}</option>`).join("");
 
     // 计算（以传入月份为准；本位币口径：外币乘汇率、成本乘销售→库存换算率并折本位币）
-    const shippedInMonth = DB.list("sales_orders").filter(o => o.status === "shipped" && o.order_date.startsWith(month));
+    // 联动：收入按「出货日期」归属（跨月订单以实际出货月份计入损益），与出货单流水一致
+    const shipIds = new Set(DB.list("shipments").filter(s => s.ship_date.startsWith(month)).map(s => s.sales_order_id));
+    const shippedInMonth = DB.list("sales_orders").filter(o => o.status === "shipped" && shipIds.has(o.id));
     const revenue = shippedInMonth.reduce((s, o) => s + toCNY(o.invoice_amount, o.currency), 0);
     const cogs = shippedInMonth.reduce((s, o) => s + o.lines.reduce((a, l) => {
         const it = DB.get("items", l.item_id);
@@ -586,7 +604,7 @@ Pages.incomeStatement = function () {
             </tbody>
         </table>
     </div>
-    <p class="stat-line" style="margin-top:10px">统计口径：${month} 期间已出货订单收入与成本（外币按汇率折${COMPANY.baseCurrency}）、期间内费用与退货（退货成本冲回）。</p>`;
+    <p class="stat-line" style="margin-top:10px">统计口径：${month} 期间「出货日期」出货的订单收入与成本（外币按汇率折${COMPANY.baseCurrency}）、期间内费用与退货（退货成本冲回）。跨月订单以实际出货月份计入损益。</p>`;
     renderShell("income_statement", content, "首页 / 账款财务 / 损益表");
 };
 

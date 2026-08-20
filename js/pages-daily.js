@@ -100,7 +100,7 @@ Pages.salesOrders = function () {
             <td class="num">${fmt(o.tax_amount)}</td>
             <td class="num">${fmt(o.net_receipt)}</td>
             <td>${soStatusBadge(o.status)}${shipRow ? `<span style="display:block;font-size:11.5px;color:var(--muted)">${h(shipDate)}</span>` : ""}</td>
-            <td>${o.payment_status === "paid" ? badge("已收款") : badge("未收款")}</td>
+            <td>${o.payment_status === "paid" ? badge("已收款") : o.payment_status === "partial" ? badge("部分收款") : badge("未收款")}</td>
             <td>${h(o.logistics_method || "-")}</td>
             <td>${o.invoice_status ? badge(o.invoice_status) : '-'}</td>
             <td class="action-col">
@@ -170,7 +170,7 @@ Pages.soSearch = function () {
             <td class="num">${fmt(o.tax_amount)}</td>
             <td class="num">${fmt(o.net_receipt)}</td>
             <td>${soStatusBadge(o.status)}</td>
-            <td>${o.payment_status === "paid" ? badge("已收款") : badge("未收款")}</td>
+            <td>${o.payment_status === "paid" ? badge("已收款") : o.payment_status === "partial" ? badge("部分收款") : badge("未收款")}</td>
             <td>${h(o.logistics_method || "-")}</td>
             <td>${o.invoice_status ? badge(o.invoice_status) : '-'}</td>
             <td class="action-col">
@@ -223,7 +223,7 @@ Pages.salesOrderDetail = function (id) {
         <div><span>业务员</span><strong>${h(o.sales_owner || "-")}</strong></div>
         <div><span>物流方式</span><strong>${h(o.logistics_method || "-")}</strong></div>
         <div><span>物流单号</span><strong>${h(o.shipment_no || "-")}</strong></div>
-        <div><span>收款状态</span><strong>${o.payment_status === "paid" ? badge("已收款") : badge("未收款")}</strong></div>
+        <div><span>收款状态</span><strong>${o.payment_status === "paid" ? badge("已收款") : o.payment_status === "partial" ? badge("部分收款") : badge("未收款")}</strong></div>
         <div><span>发票状态</span><strong>${o.invoice_status ? badge(o.invoice_status) : '-'}</strong></div>
     </div>
     <div class="table-wrap list-scroll">
@@ -574,7 +574,7 @@ function lineRowHtml(l) {
         <td><input type="number" step="0.0001" name="qty[]" value="${l.qty}" required style="width:90px"></td>
         <td><input name="unit[]" value="${h(l.unit)}" style="width:70px"></td>
         <td><input type="number" step="0.0001" name="unit_price[]" value="${l.unit_price}" style="width:110px"></td>
-        <td class="line-amount num">${fmt(l.amount)}</td>
+        <td class="line-amount num" data-v="${Utils.num(l.amount)}">${fmt(l.amount)}</td>
         <td><input name="line_remark[]" value="${h(l.remark || "")}"></td>
         <td class="action-col"><button class="link-btn danger" type="button" onclick="Pages.removeSalesLine(this)">移除</button></td>
     </tr>`;
@@ -589,7 +589,7 @@ Pages.addSalesLine = function (itemId) {
         <td><input type="number" step="0.0001" name="qty[]" value="" required style="width:90px"></td>
         <td><input name="unit[]" value="" style="width:70px"></td>
         <td><input type="number" step="0.0001" name="unit_price[]" value="" style="width:110px"></td>
-        <td class="line-amount num">0.00</td>
+        <td class="line-amount num" data-v="0">0.00</td>
         <td><input name="line_remark[]" value=""></td>
         <td class="action-col"><button class="link-btn danger" type="button" onclick="Pages.removeSalesLine(this)">移除</button></td>`;
     tbody.appendChild(tr);
@@ -618,7 +618,9 @@ Pages.calcSalesLine = function (el) {
     if (!row) return;
     const qty = Utils.num(row.querySelector('[name="qty[]"]').value);
     const price = Utils.num(row.querySelector('[name="unit_price[]"]').value);
-    row.querySelector(".line-amount").textContent = Utils.round(qty * price).toFixed(2);
+    const amtEl = row.querySelector(".line-amount");
+    amtEl.textContent = Utils.round(qty * price).toFixed(2);
+    amtEl.dataset.v = Utils.round(qty * price);
     Pages.updateSalesTotal();
 };
 
@@ -630,8 +632,14 @@ Pages.bindSalesLineEvents = function (row) {
 
 Pages.updateSalesTotal = function () {
     let goodsTotal = 0;
+    // 联动：直接由数量 × 单价输入框重算，避免读取带千分位文本导致 parseFloat 截断
     document.querySelectorAll("#salesLines tbody tr").forEach(row => {
-        goodsTotal += Utils.num(row.querySelector(".line-amount").textContent);
+        const qty = Utils.num(row.querySelector('[name="qty[]"]').value);
+        const price = Utils.num(row.querySelector('[name="unit_price[]"]').value);
+        const amt = Utils.round(qty * price);
+        const lineEl = row.querySelector(".line-amount");
+        if (lineEl) lineEl.textContent = amt.toFixed(2);
+        goodsTotal += amt;
     });
     const fees = Pages.feesTotal();
     const taxType = Pages.fieldVal("tax_type") || "不计税";
@@ -779,6 +787,12 @@ Pages.shipments = function () {
     const rows = list.map(s => {
         const wh = DB.get("warehouses", s.warehouse_id);
         const goods = s.lines.reduce((a, l) => a + Utils.num(l.amount), 0);
+        // 库存异动按销售→库存换算率折为库存单位数量（与库存总览口径一致）
+        const stockMove = s.lines.reduce((a, l) => {
+            const it = DB.get("items", l.item_id);
+            const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+            return a + Utils.num(l.qty) * rate;
+        }, 0);
         const o = DB.get("sales_orders", s.sales_order_id);
         return `<tr>
             <td><a href="#/shipments/${s.id}"><b>${h(s.no)}</b></a></td>
@@ -789,28 +803,87 @@ Pages.shipments = function () {
             <td>${h(s.logistics_method || "-")}${s.shipment_no ? `<br><span style="color:var(--muted);font-size:12px">${h(s.shipment_no)}</span>` : ""}</td>
             <td class="num">${s.lines.length}</td>
             <td class="num">${fmt(goods)}</td>
+            <td class="num" style="color:var(--danger)">-${stockMove}</td>
             <td>${o ? soStatusBadge(o.status) : badge("已出货")}</td>
             <td>${h(s.created_by)}</td>
             <td class="action-col">
                 <a class="link-btn" href="#/shipments/${s.id}">查看</a>
                 <button class="link-btn" onclick="Pages.printShipment('${s.id}')">打印</button>
+                <button class="link-btn danger" onclick="Pages.deleteShipment('${s.id}')">删除</button>
             </td>
         </tr>`;
     }).join("");
 
     const content = `
     <div class="page-head">
-        <div><h1>出货单</h1><p>销货订单出货后系统自动建立出货单并扣减库存。</p></div>
-        <div class="head-actions"><a class="btn ghost" href="#/sales-orders">前往销货订单</a></div>
+        <div><h1>出货单</h1><p>销货订单出货后系统自动建立出货单并扣减库存；也可手动对未出货订单建立出货单。</p></div>
+        <div class="head-actions">
+            ${can("sales.ship") ? `<button class="btn primary" onclick="Pages.newShipment()">+ 新增出货单</button>` : ""}
+            <a class="btn ghost" href="#/sales-orders">前往销货订单</a>
+        </div>
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
-            <thead><tr><th>出货单号</th><th>订单单号</th><th>出货日期</th><th>出货仓库</th><th>收件人</th><th>物流</th><th class="num">品项数</th><th class="num">出货金额</th><th>状态</th><th>建立人</th><th class="action-col">操作</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="11"><div class="empty-state"><div class="big">📭</div>暂无出货记录</div></td></tr>`}</tbody>
+            <thead><tr><th>出货单号</th><th>订单单号</th><th>出货日期</th><th>出货仓库</th><th>收件人</th><th>物流</th><th class="num">品项数</th><th class="num">出货金额</th><th class="num">库存异动</th><th>状态</th><th>建立人</th><th class="action-col">操作</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="12"><div class="empty-state"><div class="big">📭</div>暂无出货记录</div></td></tr>`}</tbody>
         </table>
     </div>
     <p class="stat-line">共 ${list.length} 笔出货单</p>`;
     renderShell("shipments", content, "首页 / 日常作业 / 出货单");
+};
+
+/* ---- 手动新增出货单：选择未出货订单后进入出货流程 ---- */
+Pages.newShipment = function () {
+    const drafts = DB.list("sales_orders").filter(o => o.status === "draft");
+    if (!drafts.length) { toast("没有未出货的销货订单，请先新增销货订单", "error"); return; }
+    const opts = drafts.map(o => {
+        const cu = DB.get("customers", o.customer_id);
+        return `<option value="${o.id}">${h(o.no)} - ${h(cu ? cu.name : "")} - ${fmt(o.invoice_amount)}</option>`;
+    }).join("");
+    const mask = document.createElement("div");
+    mask.className = "modal-mask";
+    mask.innerHTML = `<div class="modal" style="max-width:440px">
+        <div class="modal-head"><h3>新增出货单</h3><button class="icon-btn" onclick="this.closest('.modal-mask').remove()">✕</button></div>
+        <div class="modal-body">
+            <div class="form-item"><label>选择销货订单 <b>*</b></label><select id="shipOrderSel"><option value="">请选择未出货订单</option>${opts}</select></div>
+            <p class="stat-line" style="margin-top:8px">选择后进入出货流程：指定仓库与物流，系统扣减库存并建立出货单。</p>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" onclick="this.closest('.modal-mask').remove()">取消</button>
+            <button class="btn primary" onclick="Pages.doNewShipment()">下一步：出货</button>
+        </div>
+    </div>`;
+    document.body.appendChild(mask);
+};
+
+Pages.doNewShipment = function () {
+    const sel = document.getElementById("shipOrderSel");
+    const id = sel ? sel.value : "";
+    if (!id) { toast("请选择销货订单", "error"); return; }
+    document.querySelector(".modal-mask")?.remove();
+    Pages.shipOrder(id); // 复用既有出货弹窗（仓库/物流/确认）
+};
+
+/* ---- 删除出货单：回冲库存、订单恢复未出货 ---- */
+Pages.deleteShipment = function (id) {
+    const s = DB.get("shipments", id);
+    if (!s) return;
+    const o = DB.get("sales_orders", s.sales_order_id);
+    // 安全守卫：订单已有销货退回时，删除出货单会造成库存与冲销口径混乱，禁止删除
+    const hasReturn = DB.list("sales_returns").some(r => r.sales_order_id === s.sales_order_id);
+    if (hasReturn) { toast("该订单已有销货退回/折让记录，无法删除出货单", "error"); return; }
+    confirmModal(`确定要删除出货单 ${s.no} 吗？库存将按原数量回冲（${s.lines.length} 个品项），订单 ${h(s.order_no)} 将恢复为未出货状态。此操作不可恢复。`, () => {
+        // 回冲库存（按销售→库存换算率折为库存单位数量）
+        s.lines.forEach(l => {
+            const it = DB.get("items", l.item_id);
+            const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+            DB.addStock(s.warehouse_id, l.item_id, Utils.num(l.qty) * rate);
+        });
+        DB.remove("shipments", id);
+        if (o) DB.update("sales_orders", o.id, { status: "draft", logistics_method: "", shipment_no: "" });
+        toast("出货单已删除，库存已回冲", "success");
+        render();
+    }, "删除出货单");
 };
 
 /* ---- 出货单详情 ---- */
@@ -851,7 +924,11 @@ Pages.shipmentDetail = function (id) {
     <div class="order-summary-bar" style="margin-top:16px">
         <div><span>品项数</span><strong>${s.lines.length}</strong></div>
         <div><span>出货金额</span><strong>${fmt(goods)}</strong></div>
-        <div><span>库存异动</span><strong style="color:var(--danger)">-${s.lines.reduce((a, l) => a + Utils.num(l.qty), 0)}</strong></div>
+        <div><span>库存异动</span><strong style="color:var(--danger)">-${s.lines.reduce((a, l) => {
+            const it = DB.get("items", l.item_id);
+            const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+            return a + Utils.num(l.qty) * rate;
+        }, 0)}</strong></div>
     </div>`;
     renderShell("shipments", content, "首页 / 日常作业 / 出货单 / " + s.no);
 };
@@ -1003,7 +1080,7 @@ function poLineRowHtml(l) {
         <td><input type="number" step="0.0001" name="qty[]" value="${l.qty}" required style="width:90px"></td>
         <td><input name="unit[]" value="${h(l.unit)}" style="width:70px"></td>
         <td><input type="number" step="0.0001" name="unit_price[]" value="${l.unit_price}" style="width:110px"></td>
-        <td class="line-amount num">${fmt(l.amount)}</td>
+        <td class="line-amount num" data-v="${Utils.num(l.amount)}">${fmt(l.amount)}</td>
         <td><input name="line_remark[]" value="${h(l.remark || "")}"></td>
         <td class="action-col"><button class="link-btn danger" type="button" onclick="Pages.removePOLine(this)">移除</button></td>
     </tr>`;
@@ -1018,7 +1095,7 @@ Pages.addPOLine = function (itemId) {
         <td><input type="number" step="0.0001" name="qty[]" value="" required style="width:90px"></td>
         <td><input name="unit[]" value="" style="width:70px"></td>
         <td><input type="number" step="0.0001" name="unit_price[]" value="" style="width:110px"></td>
-        <td class="line-amount num">0.00</td>
+        <td class="line-amount num" data-v="0">0.00</td>
         <td><input name="line_remark[]" value=""></td>
         <td class="action-col"><button class="link-btn danger" type="button" onclick="Pages.removePOLine(this)">移除</button></td>`;
     tbody.appendChild(tr);
@@ -1047,7 +1124,9 @@ Pages.calcPOLine = function (el) {
     if (!row) return;
     const qty = Utils.num(row.querySelector('[name="qty[]"]').value);
     const price = Utils.num(row.querySelector('[name="unit_price[]"]').value);
-    row.querySelector(".line-amount").textContent = Utils.round(qty * price).toFixed(2);
+    const amtEl = row.querySelector(".line-amount");
+    amtEl.textContent = Utils.round(qty * price).toFixed(2);
+    amtEl.dataset.v = Utils.round(qty * price);
     Pages.updatePOTotal();
 };
 
@@ -1057,8 +1136,14 @@ Pages.bindPOLineEvents = function (row) {
 
 Pages.updatePOTotal = function () {
     let total = 0;
+    // 联动：直接由数量 × 单价输入框重算，避免读取带千分位文本导致 parseFloat 截断
     document.querySelectorAll("#poLines tbody tr").forEach(row => {
-        total += Utils.num(row.querySelector(".line-amount").textContent);
+        const qty = Utils.num(row.querySelector('[name="qty[]"]').value);
+        const price = Utils.num(row.querySelector('[name="unit_price[]"]').value);
+        const amt = Utils.round(qty * price);
+        const lineEl = row.querySelector(".line-amount");
+        if (lineEl) lineEl.textContent = amt.toFixed(2);
+        total += amt;
     });
     const els = [document.getElementById("poTotal"), document.getElementById("poTotalFoot")];
     els.forEach(el => { if (el) el.textContent = fmt(total); });
@@ -1408,7 +1493,7 @@ Pages.srLoadOrder = function (forceLines) {
             <td><input type="number" step="0.0001" name="qty[]" value="${l.qty}" required style="width:90px"></td>
             <td><input name="unit[]" value="${h(l.unit)}" readonly style="width:70px"></td>
             <td><input type="number" step="0.0001" name="unit_price[]" value="${l.unit_price}" readonly style="width:110px"></td>
-            <td class="line-amount num">${fmt(l.amount)}</td>
+            <td class="line-amount num" data-v="${Utils.num(l.amount)}">${fmt(l.amount)}</td>
             <td><input name="line_remark[]" value=""></td>
             <td class="action-col"><button class="link-btn danger" type="button" onclick="this.closest('tr').remove();Pages.updateSRTotal()">移除</button></td>`;
         // 数量输入实时重算行金额与合计（联动）
@@ -1605,7 +1690,7 @@ Pages.prLoadOrder = function (forceLines) {
             <td><input type="number" step="0.0001" name="qty[]" value="${l.qty}" required style="width:90px"></td>
             <td><input name="unit[]" value="${h(l.unit)}" readonly style="width:70px"></td>
             <td><input type="number" step="0.0001" name="unit_price[]" value="${l.unit_price}" readonly style="width:110px"></td>
-            <td class="line-amount num">${fmt(l.amount)}</td>
+            <td class="line-amount num" data-v="${Utils.num(l.amount)}">${fmt(l.amount)}</td>
             <td><input name="line_remark[]" value=""></td>
             <td class="action-col"><button class="link-btn danger" type="button" onclick="this.closest('tr').remove();Pages.updatePRTotal()">移除</button></td>`;
         // 数量输入实时重算行金额与合计（联动）

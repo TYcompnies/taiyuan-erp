@@ -36,7 +36,8 @@ const Utils = {
         return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
     },
     num(v) {
-        const n = parseFloat(v);
+        // 兼容千分位格式（fmt 输出如 "1,200.00"），统一去掉逗号再解析
+        const n = parseFloat(String(v == null ? "" : v).replace(/,/g, ""));
         return isNaN(n) ? 0 : n;
     },
     round(v, dec = 2) {

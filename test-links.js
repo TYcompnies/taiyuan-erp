@@ -198,9 +198,10 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   console.log('\n[5] 损益表：营收 300 + 100×7.2 = 1020；COGS = 10×2×10 + 2×1×36 = 272');
   await gotoHash('#/accounting/income-statement');
   const inc = await db(() => {
-    // 直接调用页面相同的计算逻辑（本位币口径）
+    // 直接调用页面相同的计算逻辑（本位币口径；收入按出货日期归属）
     const month = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0');
-    const shippedInMonth = DB.list('sales_orders').filter(o => o.status === 'shipped' && o.order_date.startsWith(month));
+    const shipIds = new Set(DB.list('shipments').filter(s => s.ship_date.startsWith(month)).map(s => s.sales_order_id));
+    const shippedInMonth = DB.list('sales_orders').filter(o => o.status === 'shipped' && shipIds.has(o.id));
     const revenue = shippedInMonth.reduce((s, o) => s + toCNY(o.invoice_amount, o.currency), 0);
     const cogs = shippedInMonth.reduce((s, o) => s + o.lines.reduce((a, l) => {
       const it = DB.get('items', l.item_id);
