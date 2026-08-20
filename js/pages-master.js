@@ -505,12 +505,19 @@ Pages.deleteMaster = function (coll, id, label) {
     if (!r) return;
     // 引用检查：被单据/商品引用时拒绝删除
     let ref = null;
-    if (coll === "customers") ref = DB.find("sales_orders", x => x.customer_id === id);
-    else if (coll === "suppliers") ref = DB.find("purchase_orders", x => x.supplier_id === id);
-    else if (coll === "warehouses") ref = DB.find("shipments", x => x.warehouse_id === id) || DB.find("purchase_orders", x => x.warehouse_id === id) || DB.find("inventory_adjusts", x => x.warehouse_id === id) || DB.find("sales_returns", x => x.warehouse_id === id) || DB.find("purchase_returns", x => x.warehouse_id === id);
+    if (coll === "customers") ref = DB.find("sales_orders", x => x.customer_id === id) || DB.find("sales_returns", x => x.customer_id === id);
+    else if (coll === "suppliers") ref = DB.find("purchase_orders", x => x.supplier_id === id) || DB.find("purchase_returns", x => x.supplier_id === id);
+    else if (coll === "warehouses") {
+        ref = DB.find("shipments", x => x.warehouse_id === id) || DB.find("purchase_orders", x => x.warehouse_id === id) || DB.find("inventory_adjusts", x => x.warehouse_id === id) || DB.find("sales_returns", x => x.warehouse_id === id) || DB.find("purchase_returns", x => x.warehouse_id === id);
+        // 仓库内仍有库存（任一商品数量非 0）时禁删
+        if (!ref) {
+            const stockMap = DB.stockMap()[id] || {};
+            ref = Object.keys(stockMap).some(k => Utils.num(stockMap[k]) !== 0) ? { _stock: true } : null;
+        }
+    }
     else if (coll === "categories") ref = DB.find("items", x => x.category_id === id) || DB.find("categories", x => x.parent_id === id);
     else if (coll === "units") ref = DB.find("items", x => x.sales_unit === r.name || x.purchase_unit === r.name || x.stock_unit === r.name);
-    else if (coll === "currencies") ref = DB.find("items", x => x.purchase_currency === r.code) || DB.find("customers", x => x.currency === r.code) || DB.find("suppliers", x => x.currency === r.code);
+    else if (coll === "currencies") ref = DB.find("items", x => x.purchase_currency === r.code) || DB.find("customers", x => x.currency === r.code) || DB.find("suppliers", x => x.currency === r.code) || DB.find("sales_orders", x => x.currency === r.code) || DB.find("purchase_orders", x => x.currency === r.code);
     else if (coll === "payment_terms") ref = DB.find("customers", x => x.payment_method === r.name) || DB.find("suppliers", x => x.payment_method === r.name);
     else if (coll === "shipping_methods") ref = DB.find("sales_orders", x => x.logistics_method === r.name) || DB.find("shipments", x => x.logistics_method === r.name);
     if (ref) { toast(`该${label}已被引用，无法删除；请先解除关联或改为停用`, "error"); return; }

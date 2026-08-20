@@ -171,8 +171,11 @@ const DB = {
     },
     stockValue(itemId) {
         const it = this.get("items", itemId);
-        const cost = it ? Utils.num(it.cost) : 0;
-        return Utils.round(this.totalStock(itemId) * cost);
+        if (!it) return 0;
+        // 成本按采购币别汇率折合本位币，与库存总览页口径一致
+        const cu = this.currencyByCode(it.purchase_currency);
+        const rate = cu && Utils.num(cu.rate) > 0 ? Utils.num(cu.rate) : 1;
+        return Utils.round(this.totalStock(itemId) * Utils.num(it.cost) * rate);
     },
 
     /* ---------- 会话 ---------- */

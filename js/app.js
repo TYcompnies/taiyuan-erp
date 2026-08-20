@@ -8,6 +8,16 @@ const h = (v) => Utils.esc(v);
 const fmt = (v, cur) => Utils.money(v, cur);
 const curSymbol = (code) => { const c = DB.currencyByCode(code); return c ? c.symbol + " " : ""; };
 
+/* ---------------- 本位币（人民币）换算 ---------------- */
+// 将任意币别金额折合本位币（人民币）；币别缺失或汇率无效时按 1 处理
+const toCNY = (amount, code) => {
+    const cu = DB.currencyByCode(code);
+    const rate = cu && Utils.num(cu.rate) > 0 ? Utils.num(cu.rate) : 1;
+    return Utils.num(amount) * rate;
+};
+// 商品成本折合本位币（按商品采购币别汇率）
+const itemCostCNY = (it) => it ? toCNY(it.cost, it.purchase_currency) : 0;
+
 /* ---------------- 人民币金额大写（大陆单据用） ---------------- */
 function rmbUpper(n) {
     const num = Utils.num(n);
@@ -362,15 +372,22 @@ function renderDashboard() {
     })).length;
     const curMissingCount = DB.list("currencies").filter(c => !c.is_base && (!c.rate || c.rate <= 0)).length;
 
-    // 本月损益
+    // 本月损益（本位币口径：外币乘汇率、成本乘销售→库存换算率、冲回退货成本，与损益表一致）
     const shipped = orders.filter(o => o.status === "shipped" && o.order_date >= month);
-    const revenue = shipped.reduce((s, o) => s + Utils.num(o.invoice_amount), 0);
+    const revenue = shipped.reduce((s, o) => s + toCNY(o.invoice_amount, o.currency), 0);
     const cogs = shipped.reduce((s, o) => s + o.lines.reduce((a, l) => {
         const it = DB.get("items", l.item_id);
-        return a + Utils.num(l.qty) * Utils.num(it ? it.cost : 0);
+        const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+        return a + Utils.num(l.qty) * rate * itemCostCNY(it);
     }, 0), 0);
+    const monthReturns = DB.list("sales_returns").filter(r => r.return_date >= month);
+    const returnTotal = monthReturns.reduce((s, r) => {
+        const so = DB.get("sales_orders", r.sales_order_id);
+        return s + toCNY(r.total_amount, so ? so.currency : "");
+    }, 0);
+    const returnCost = monthReturns.reduce((s, r) => s + Utils.num(r.cost_reversal), 0);
     const expenses = DB.list("expenses").filter(e => e.date >= month).reduce((s, e) => s + Utils.num(e.amount), 0);
-    const profit = Utils.round(revenue - cogs - expenses);
+    const profit = Utils.round((revenue - returnTotal) - (cogs - returnCost) - expenses);
 
     // 应收应付（扣除已收/已付与退货/退回冲销）
     const arReturnMap = {};
@@ -484,7 +501,7 @@ function renderDashboard() {
         <div class="kpi-card"><span>待进货采购</span><strong>${pendingReceive.length}</strong><p>确认后仍未进货</p></div>
         <div class="kpi-card"><span>待出货订单</span><strong>${pendingShip.length}</strong><p>订单尚未扣库存</p></div>
         <div class="kpi-card"><span>低库存商品</span><strong>${lowStock.length}</strong><p>低于安全库存</p></div>
-        <div class="kpi-card"><span>本月损益</span><strong>${fmt(profit)}</strong><p>收入 - 成本 - 费用</p></div>
+        <div class="kpi-card"><span>本月损益</span><strong>${fmt(profit)}</strong><p>净营收 - 销货成本净额 - 费用</p></div>
     </section>
 
     <section class="launch-section-grid">

@@ -7,8 +7,8 @@
 const Pages = {};
 
 /* ---------------- 共用辅助 ---------------- */
-function nextDocNo(prefix, collection) {
-    return Utils.nextNo(prefix, Utils.today(), { list: () => DB.list(collection) });
+function nextDocNo(prefix, collection, date) {
+    return Utils.nextNo(prefix, date || Utils.today(), { list: () => DB.list(collection) });
 }
 function itemOptions(selectedId) {
     return DB.list("items").filter(i => !i.disabled).map(i =>
@@ -382,9 +382,11 @@ Pages.doShip = function (id) {
     const shipNo = document.getElementById("shipNo").value;
     if (!whId) { toast("请选择出货仓库", "error"); return; }
 
-    // 扣库存前检查库存是否充足（仅预警，不阻断超卖场景）
+    // 扣库存前检查库存是否充足（含单位换算，仅预警，不阻断超卖场景）
     const shortLines = o.lines.filter(l => {
-        const qty = Utils.num(l.qty);
+        const it = DB.get("items", l.item_id);
+        const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+        const qty = Utils.num(l.qty) * rate;
         const stock = DB.stockOf(whId, l.item_id);
         return qty > 0 && stock < qty;
     });
@@ -392,8 +394,12 @@ Pages.doShip = function (id) {
         toast(`库存不足提醒：${shortLines.map(l => l.code).join("、")} 出货后会产生负库存`, "error");
     }
 
-    // 扣库存
-    o.lines.forEach(l => { DB.addStock(whId, l.item_id, -l.qty); });
+    // 扣库存（按销售→库存换算率换算为库存单位数量）
+    o.lines.forEach(l => {
+        const it = DB.get("items", l.item_id);
+        const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+        DB.addStock(whId, l.item_id, -Utils.num(l.qty) * rate);
+    });
 
     // 建立出货单
     const no = nextDocNo("SH", "shipments");
@@ -698,6 +704,11 @@ Pages.saveSalesOrder = function (e, id) {
     if (window.__saveLock) { toast("正在保存，请稍候…", "error"); return; }
     window.__saveLock = true;
     try {
+    // 状态守卫：已出货订单锁定，任何途径（含回车提交）都不可再改
+    if (id) {
+        const old = DB.get("sales_orders", id);
+        if (old && old.status !== "draft") { toast("该订单已出货，内容已锁定，无法修改", "error"); return; }
+    }
     const fd = new FormData(e.target);
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
@@ -726,7 +737,7 @@ Pages.saveSalesOrder = function (e, id) {
     const cu = DB.get("customers", data.customer_id);
 
     const payload = {
-        no: id ? DB.get("sales_orders", id).no : nextDocNo("SO", "sales_orders"),
+        no: id ? DB.get("sales_orders", id).no : nextDocNo("SO", "sales_orders", data.order_date),
         channel: data.sales_channel, platform_no: data.platform_order_no,
         customer_id: data.customer_id, payment_status: data.payment_status, payment_method: data.payment_method,
         currency: data.currency, order_date: data.order_date, delivery_date: data.delivery_date || "",
@@ -845,10 +856,15 @@ Pages.shipmentDetail = function (id) {
    ============================================================ */
 Pages.purchaseOrders = function () {
     const list = DB.list("purchase_orders").sort((a, b) => b.no.localeCompare(a.no));
+    // 采购退回/折让冲减未付金额映射（与应付账款页口径一致）
+    const prMap = {};
+    DB.list("purchase_returns").filter(r => r.offset_payable).forEach(r => {
+        prMap[r.purchase_order_id] = (prMap[r.purchase_order_id] || 0) + Utils.num(r.amount);
+    });
     const rows = list.map(o => {
         const sp = DB.get("suppliers", o.supplier_id);
         const wh = DB.get("warehouses", o.warehouse_id);
-        const unpaid = Utils.num(o.amount) - Utils.num(o.paid_amount);
+        const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (prMap[o.id] || 0), 0);
         return `<tr>
             <td><a href="#/purchase-orders/${o.id}/edit"><b>${h(o.no)}</b></a></td>
             <td>${h(o.po_date)}</td>
@@ -902,7 +918,12 @@ Pages.receivePO = function (id) {
     if (!o) return;
     if (o.status !== "draft") { toast("该采购单已进货，请勿重复操作", "error"); return; }
     confirmModal(`确定要执行进货入库吗？采购单 ${o.no} 的商品将增加库存并形成应付账款。`, () => {
-        o.lines.forEach(l => { DB.addStock(o.warehouse_id, l.item_id, l.qty); });
+        // 加库存（按采购→库存换算率换算为库存单位数量）
+        o.lines.forEach(l => {
+            const it = DB.get("items", l.item_id);
+            const rate = it && Utils.num(it.purchase_to_stock) > 0 ? Utils.num(it.purchase_to_stock) : 1;
+            DB.addStock(o.warehouse_id, l.item_id, Utils.num(l.qty) * rate);
+        });
         DB.update("purchase_orders", o.id, { status: "received" });
         toast(`采购单 ${o.no} 已进货入库`, "success");
         render();
@@ -1054,6 +1075,11 @@ Pages.savePO = function (e, id) {
     if (window.__saveLock) { toast("正在保存，请稍候…", "error"); return; }
     window.__saveLock = true;
     try {
+    // 状态守卫：已进货采购单锁定，任何途径（含回车提交）都不可再改
+    if (id) {
+        const old = DB.get("purchase_orders", id);
+        if (old && old.status !== "draft") { toast("该采购单已进货，内容已锁定，无法修改", "error"); return; }
+    }
     const fd = new FormData(e.target);
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
@@ -1078,7 +1104,7 @@ Pages.savePO = function (e, id) {
     const amount = lines.reduce((s, l) => s + l.amount, 0);
 
     const payload = {
-        no: id ? DB.get("purchase_orders", id).no : nextDocNo("PO", "purchase_orders"),
+        no: id ? DB.get("purchase_orders", id).no : nextDocNo("PO", "purchase_orders", data.po_date),
         supplier_id: data.supplier_id, po_date: data.po_date, delivery_date: data.delivery_date || "",
         currency: data.currency, payment_method: data.payment_method, status: data.status || "draft",
         warehouse_id: data.warehouse_id, amount, paid_amount: id ? DB.get("purchase_orders", id).paid_amount : 0,
@@ -1418,6 +1444,18 @@ Pages.saveSalesReturn = function (e) {
         });
     });
     if (!lines.length) { toast("请至少新增一笔退回明细", "error"); return; }
+    // 超退限制：累计退回（含本次）不得超过订单各商品已出货数量
+    const priorReturns = DB.list("sales_returns").filter(r => r.sales_order_id === so.id);
+    for (const l of lines) {
+        const soLine = so.lines.find(sl => sl.item_id === l.item_id || (sl.code && sl.code === l.code));
+        if (!soLine) continue;
+        const priorQty = priorReturns.reduce((s, r) => s + (r.lines || []).reduce((a, x) =>
+            a + (x.item_id === l.item_id || (x.code && x.code === l.code) ? Utils.num(x.qty) : 0), 0), 0);
+        if (Utils.num(l.qty) + priorQty > Utils.num(soLine.qty) + 0.0001) {
+            toast(`商品 ${l.code} 累计退回数量超过订单出货数量（最多可退 ${Utils.num(soLine.qty) - priorQty}），无法保存`, "error");
+            return;
+        }
+    }
     const total = lines.reduce((s, l) => s + l.amount, 0);
     // 税额按退回金额占原单销售额比例分摊
     const ratio = Utils.num(so.invoice_amount) > 0 ? total / Utils.num(so.invoice_amount) : 0;
@@ -1425,24 +1463,36 @@ Pages.saveSalesReturn = function (e) {
     const untaxedAmount = Utils.round(total - taxAmount);
     const costReversal = lines.reduce((s, l) => {
         const it = DB.itemByCode(l.code);
-        return s + Utils.num(l.qty) * Utils.num(it ? it.cost : 0);
+        const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+        // 成本按采购币别汇率折合本位币，与损益表/仪表板口径一致
+        return s + Utils.num(l.qty) * rate * itemCostCNY(it);
     }, 0);
 
-    // 退回增加库存
+    // 退回增加库存（按销售→库存换算率换算为库存单位数量）
     if (data.type === "退回") {
         lines.forEach(l => {
             const it = DB.itemByCode(l.code);
-            if (it) DB.addStock(data.warehouse_id, it.id, l.qty);
+            if (!it) return;
+            const rate = Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+            DB.addStock(data.warehouse_id, it.id, Utils.num(l.qty) * rate);
         });
     }
     DB.insert("sales_returns", {
-        no: nextDocNo("SR", "sales_returns"), sales_order_id: so.id, order_no: so.no,
+        no: nextDocNo("SR", "sales_returns", data.return_date), sales_order_id: so.id, order_no: so.no,
         customer_id: so.customer_id, type: data.type, return_date: data.return_date,
         warehouse_id: data.warehouse_id, lines, untaxed_amount: untaxedAmount, tax_amount: taxAmount,
         total_amount: total, offset_receivable: data.offset_receivable === "1",
         cost_reversal: Utils.round(costReversal), remark: data.remark || "",
         created_by: DB.currentUser().name
     });
+    // 冲减应收时，同步回写订单收款状态（未收重新计算，已收超限则退回未收状态）
+    if (data.offset_receivable === "1") {
+        const received = Utils.num(so.received_amount);
+        const allReturns = priorReturns.filter(r => r.offset_receivable).reduce((s, r) => s + Utils.num(r.total_amount), 0) + total;
+        const outstanding = Math.max(Utils.num(so.invoice_amount) - received - allReturns, 0);
+        const st = outstanding <= 0.001 ? "paid" : (received > 0 ? "partial" : "unpaid");
+        DB.update("sales_orders", so.id, { payment_status: st });
+    }
     toast("销货退回/折让已保存", "success");
     setTimeout(() => { location.hash = "#/sales-returns"; }, 300);
 };
@@ -1589,21 +1639,43 @@ Pages.savePurchaseReturn = function (e) {
         });
     });
     if (!lines.length) { toast("请至少新增一笔退回明细", "error"); return; }
+    // 超退限制：累计退回（含本次）不得超过采购单各商品已进货数量
+    const priorPRs = DB.list("purchase_returns").filter(r => r.purchase_order_id === po.id);
+    for (const l of lines) {
+        const poLine = po.lines.find(pl => pl.item_id === l.item_id || (pl.code && pl.code === l.code));
+        if (!poLine) continue;
+        const priorQty = priorPRs.reduce((s, r) => s + (r.lines || []).reduce((a, x) =>
+            a + (x.item_id === l.item_id || (x.code && x.code === l.code) ? Utils.num(x.qty) : 0), 0), 0);
+        if (Utils.num(l.qty) + priorQty > Utils.num(poLine.qty) + 0.0001) {
+            toast(`商品 ${l.code} 累计退回数量超过采购单进货数量（最多可退 ${Utils.num(poLine.qty) - priorQty}），无法保存`, "error");
+            return;
+        }
+    }
     const total = lines.reduce((s, l) => s + l.amount, 0);
 
     if (data.type === "退回") {
         lines.forEach(l => {
             const it = DB.itemByCode(l.code);
-            if (it) DB.addStock(po.warehouse_id, it.id, -l.qty);
+            if (!it) return;
+            const rate = Utils.num(it.purchase_to_stock) > 0 ? Utils.num(it.purchase_to_stock) : 1;
+            DB.addStock(po.warehouse_id, it.id, -Utils.num(l.qty) * rate);
         });
     }
     DB.insert("purchase_returns", {
-        no: nextDocNo("PR", "purchase_returns"), purchase_order_id: po.id, order_no: po.no,
+        no: nextDocNo("PR", "purchase_returns", data.return_date), purchase_order_id: po.id, order_no: po.no,
         supplier_id: po.supplier_id, type: data.type, return_date: data.return_date,
         warehouse_id: po.warehouse_id, lines, amount: total,
         offset_payable: data.offset_payable === "1", remark: data.remark || "",
         created_by: DB.currentUser().name
     });
+    // 冲减应付时，同步回写采购单付款状态（已付重新计算，超限则退回未付状态）
+    if (data.offset_payable === "1") {
+        const paid = Utils.num(po.paid_amount);
+        const allPRs = priorPRs.filter(r => r.offset_payable).reduce((s, r) => s + Utils.num(r.amount), 0) + total;
+        const outstanding = Math.max(Utils.num(po.amount) - paid - allPRs, 0);
+        const st = outstanding <= 0.001 ? "paid" : (paid > 0 ? "partial" : "unpaid");
+        DB.update("purchase_orders", po.id, { payment_status: st });
+    }
     toast("采购退回/折让已保存", "success");
     setTimeout(() => { location.hash = "#/purchase-returns"; }, 300);
 };

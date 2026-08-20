@@ -58,7 +58,9 @@ Pages.receivePayment = function (id) {
     const o = DB.get("sales_orders", id);
     if (!o) return;
     const received = Utils.num(o.received_amount) || 0;
-    const outstanding = Math.max(Utils.num(o.invoice_amount) - received, 0);
+    // 未收金额扣除销货退回/折让冲减，与应收账款列表口径一致
+    const returnTotal = DB.list("sales_returns").filter(r => r.sales_order_id === id && r.offset_receivable).reduce((s, r) => s + Utils.num(r.total_amount), 0);
+    const outstanding = Math.max(Utils.num(o.invoice_amount) - received - returnTotal, 0);
     const mask = document.createElement("div");
     mask.className = "modal-mask";
     mask.innerHTML = `<div class="modal" style="max-width:420px">
@@ -84,11 +86,20 @@ Pages.doSavePayment = function (id) {
     const amt = Utils.num(document.getElementById("payAmount").value);
     if (amt <= 0) { toast("请输入有效收款金额", "error"); return; }
     const received = Utils.num(o.received_amount) || 0;
-    const outstanding = Math.max(Utils.num(o.invoice_amount) - received, 0);
-    if (amt > outstanding + 0.001) { toast("收款金额不能超过未收金额", "error"); return; }
+    // 未收金额扣除销货退回/折让冲减，避免超收
+    const returnTotal = DB.list("sales_returns").filter(r => r.sales_order_id === id && r.offset_receivable).reduce((s, r) => s + Utils.num(r.total_amount), 0);
+    const outstanding = Math.max(Utils.num(o.invoice_amount) - received - returnTotal, 0);
+    if (amt > outstanding + 0.001) { toast("收款金额不能超过未收金额（含退货冲减）", "error"); return; }
     const newReceived = Utils.round(received + amt);
     const payment_status = newReceived >= Utils.num(o.invoice_amount) ? "paid" : "partial";
-    DB.update("sales_orders", id, { received_amount: newReceived, payment_status });
+    // 保存收款方式与收款日期，形成收款流水可追溯
+    const method = document.getElementById("payMethod") ? document.getElementById("payMethod").value : "";
+    const pDate = document.getElementById("payDate") ? document.getElementById("payDate").value : Utils.today();
+    DB.update("sales_orders", id, {
+        received_amount: newReceived, payment_status,
+        payment_method: method || o.payment_method || "银行转账",
+        payment_date: pDate
+    });
     document.querySelector(".modal-mask")?.remove();
     toast("收款登记成功", "success");
     render();
@@ -146,7 +157,9 @@ Pages.accountsPayable = function () {
 Pages.payPO = function (id) {
     const o = DB.get("purchase_orders", id);
     if (!o) return;
-    const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount), 0);
+    // 未付金额扣除采购退回/折让冲减，与应付账款列表口径一致
+    const returnTotal = DB.list("purchase_returns").filter(r => r.purchase_order_id === id && r.offset_payable).reduce((s, r) => s + Utils.num(r.amount), 0);
+    const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - returnTotal, 0);
     const mask = document.createElement("div");
     mask.className = "modal-mask";
     mask.innerHTML = `<div class="modal" style="max-width:420px">
@@ -171,9 +184,20 @@ Pages.doSavePayPO = function (id) {
     if (!o) return;
     const amt = Utils.num(document.getElementById("payAmountPO").value);
     if (amt <= 0) { toast("请输入有效付款金额", "error"); return; }
-    const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount), 0);
-    if (amt > unpaid + 0.001) { toast("付款金额不能超过未付金额", "error"); return; }
-    DB.update("purchase_orders", id, { paid_amount: Utils.round(Utils.num(o.paid_amount) + amt) });
+    // 未付金额扣除采购退回/折让冲减，避免超付
+    const returnTotal = DB.list("purchase_returns").filter(r => r.purchase_order_id === id && r.offset_payable).reduce((s, r) => s + Utils.num(r.amount), 0);
+    const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - returnTotal, 0);
+    if (amt > unpaid + 0.001) { toast("付款金额不能超过未付金额（含退回冲减）", "error"); return; }
+    const newPaid = Utils.round(Utils.num(o.paid_amount) + amt);
+    const payment_status = newPaid >= Utils.num(o.amount) ? "paid" : "partial";
+    // 保存付款方式与付款日期，形成付款流水可追溯
+    const method = document.getElementById("payMethodPO") ? document.getElementById("payMethodPO").value : "";
+    const pDate = document.getElementById("payDatePO") ? document.getElementById("payDatePO").value : Utils.today();
+    DB.update("purchase_orders", id, {
+        paid_amount: newPaid, payment_status,
+        payment_method: method || o.payment_method || "银行转账",
+        payment_date: pDate
+    });
     document.querySelector(".modal-mask")?.remove();
     toast("付款登记成功", "success");
     render();
@@ -373,7 +397,7 @@ Pages.voucherForm = function () {
                 <div class="form-item"><label>来源单号</label><input name="source_no" placeholder="关联单据编号"></div>
                 <div class="form-item"><label>对象</label><input name="counterparty" placeholder="往来对象/供应商/客户"></div>
                 <div class="form-item"><label>收付款方式</label><select name="payment_method">${feeMethodOptions("银行转账")}</select></div>
-                <div class="form-item"><label>状态</label><select name="status"><option>未过账</option><option>已过账</option></select></div>
+                <div class="form-item"><label>状态</label><select name="status" disabled><option>未过账</option></select><small class="muted" style="display:block;margin-top:4px">传票保存后需另行过账</small></div>
             </div>
         </section>
         <section class="form-section">
@@ -465,7 +489,7 @@ Pages.saveVoucher = function (e) {
     DB.insert("vouchers", {
         no: nextDocNo("JV", "vouchers"), date: data.date, source: data.source,
         source_no: data.source_no || "", counterparty: data.counterparty || "",
-        payment_method: data.payment_method, status: data.status || "未过账",
+        payment_method: data.payment_method, status: "未过账", // 强制未过账，过账须经 postVoucher（回写来源单据）
         lines, balanced: true, remark: data.remark || "", created_by: DB.currentUser().name
     });
     toast("传票已保存", "success");
@@ -486,12 +510,13 @@ Pages.incomeStatement = function () {
     }
     const monthOpts = months.map(m => `<option value="${m}" ${m === month ? "selected" : ""}>${m}</option>`).join("");
 
-    // 计算（以传入月份为准；默认当月，为了演示丰富，默认显示上月若有数据则当月）
+    // 计算（以传入月份为准；本位币口径：外币乘汇率、成本乘销售→库存换算率并折本位币）
     const shippedInMonth = DB.list("sales_orders").filter(o => o.status === "shipped" && o.order_date.startsWith(month));
-    const revenue = shippedInMonth.reduce((s, o) => s + Utils.num(o.invoice_amount), 0);
+    const revenue = shippedInMonth.reduce((s, o) => s + toCNY(o.invoice_amount, o.currency), 0);
     const cogs = shippedInMonth.reduce((s, o) => s + o.lines.reduce((a, l) => {
         const it = DB.get("items", l.item_id);
-        return a + Utils.num(l.qty) * Utils.num(it ? it.cost : 0);
+        const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+        return a + Utils.num(l.qty) * rate * itemCostCNY(it);
     }, 0), 0);
     const grossProfit = revenue - cogs;
 
@@ -502,22 +527,30 @@ Pages.incomeStatement = function () {
     const expenseHtml = Object.keys(expenseRows).map(k =>
         `<tr class="indent"><td>${h(k)}</td><td class="num">${fmt(expenseRows[k])}</td></tr>`).join("");
 
+    // 销货退回/折让：按原订单币别折合本位币冲减收入；退回商品成本冲回（销退时已按成本折本位币写入）
     const returns = DB.list("sales_returns").filter(r => r.return_date.startsWith(month));
-    const returnTotal = returns.reduce((s, r) => s + Utils.num(r.total_amount), 0);
-    const netProfit = Utils.round(grossProfit - expenseTotal - returnTotal);
+    const returnTotal = returns.reduce((s, r) => {
+        const so = DB.get("sales_orders", r.sales_order_id);
+        return s + toCNY(r.total_amount, so ? so.currency : "");
+    }, 0);
+    const returnCost = returns.reduce((s, r) => s + Utils.num(r.cost_reversal), 0);
+    const netRevenue = Utils.round(revenue - returnTotal);
+    const netCogs = Utils.round(cogs - returnCost);
+    const grossProfitNet = Utils.round(netRevenue - netCogs);
+    const netProfit = Utils.round(grossProfitNet - expenseTotal);
 
     const content = `
     <div class="page-head">
-        <div><h1>损益表</h1><p>收入 - 销货成本 - 费用 = 净利润；退货冲减收入。</p></div>
+        <div><h1>损益表</h1><p>净营收 - 销货成本净额 - 费用 = 净利润；外币与成本均折合本位币（${COMPANY.baseCurrency}）。</p></div>
         <div class="head-actions">
             <select id="incomeMonth" style="width:150px" onchange="Pages.reloadIncome()">${monthOpts}</select>
         </div>
     </div>
     <div class="kpi-grid">
-        <div class="kpi-card"><span>营收</span><strong>${fmt(revenue)}</strong><p>${month} 已出货订单</p></div>
-        <div class="kpi-card"><span>销货成本</span><strong>${fmt(cogs)}</strong><p>出货数量 × 商品成本</p></div>
+        <div class="kpi-card"><span>营收</span><strong>${fmt(revenue)}</strong><p>${month} 已出货订单（折本位币）</p></div>
+        <div class="kpi-card"><span>销货成本</span><strong>${fmt(cogs)}</strong><p>出货数量 × 换算率 × 成本</p></div>
         <div class="kpi-card"><span>毛利</span><strong style="color:${grossProfit >= 0 ? "var(--green)" : "var(--danger)"}">${fmt(grossProfit)}</strong><p>营收 - 成本</p></div>
-        <div class="kpi-card"><span>净利润</span><strong style="color:${netProfit >= 0 ? "var(--green)" : "var(--danger)"}">${fmt(netProfit)}</strong><p>毛利 - 费用 - 退货</p></div>
+        <div class="kpi-card"><span>净利润</span><strong style="color:${netProfit >= 0 ? "var(--green)" : "var(--danger)"}">${fmt(netProfit)}</strong><p>净营收 - 成本净额 - 费用</p></div>
     </div>
     <div class="table-wrap fin-report">
         <table class="table">
@@ -525,16 +558,19 @@ Pages.incomeStatement = function () {
                 <tr class="section-row"><td>营业收入</td><td class="num">${fmt(revenue)}</td></tr>
                 <tr><td style="padding-left:34px">销货收入（已出货）</td><td class="num">${fmt(revenue)}</td></tr>
                 <tr><td style="padding-left:34px">减：销货退回/折让</td><td class="num" style="color:var(--danger)">-${fmt(returnTotal)}</td></tr>
+                <tr class="total-row"><td>营业收入净额</td><td class="num">${fmt(netRevenue)}</td></tr>
                 <tr class="section-row"><td>营业成本</td><td class="num">${fmt(cogs)}</td></tr>
                 <tr><td style="padding-left:34px">销货成本</td><td class="num">${fmt(cogs)}</td></tr>
-                <tr class="total-row"><td>营业毛利</td><td class="num">${fmt(grossProfit - returnTotal)}</td></tr>
+                <tr><td style="padding-left:34px">减：退回商品成本冲回</td><td class="num" style="color:var(--green)">-${fmt(returnCost)}</td></tr>
+                <tr class="total-row"><td>营业成本净额</td><td class="num">${fmt(netCogs)}</td></tr>
+                <tr class="total-row"><td>营业毛利</td><td class="num">${fmt(grossProfitNet)}</td></tr>
                 <tr class="section-row"><td>营业费用</td><td class="num">${fmt(expenseTotal)}</td></tr>
                 ${expenseHtml || `<tr class="indent"><td style="color:var(--muted)">（本月无费用记录）</td><td></td></tr>`}
                 <tr class="total-row"><td>净利润</td><td class="num" style="color:${netProfit >= 0 ? "var(--green)" : "var(--danger)"};font-size:16px">${fmt(netProfit)}</td></tr>
             </tbody>
         </table>
     </div>
-    <p class="stat-line" style="margin-top:10px">统计口径：${month} 期间已出货订单收入与成本、期间内费用与退货。</p>`;
+    <p class="stat-line" style="margin-top:10px">统计口径：${month} 期间已出货订单收入与成本（外币按汇率折${COMPANY.baseCurrency}）、期间内费用与退货（退货成本冲回）。</p>`;
     renderShell("income_statement", content, "首页 / 账款财务 / 损益表");
 };
 
