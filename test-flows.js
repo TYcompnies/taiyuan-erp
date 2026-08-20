@@ -47,6 +47,18 @@ function check(cond, msg) {
 
   // ========== 2. 记录初始状态 ==========
   console.log('\n[2] 记录初始库存状态');
+  // 业务数据已清空（商品主档为空），先插入测试商品与初始库存
+  await db(() => {
+    const it = DB.insert('items', {
+      id: 'it_test', code: 'TEST0001', name: '测试商品', english_name: 'Test Item', spec: '', brand: '测试',
+      model: '', category_id: DB.list('categories')[0].id, product_type: '成品',
+      sales_unit: '个', purchase_unit: '个', stock_unit: '个', sales_to_stock: 1, purchase_to_stock: 1,
+      cost: 10, price: 25, min_price: 20, purchase_currency: 'CNY',
+      safety_stock: 5, max_stock: 100, weight: 0, volume: 0, remark: '自动化测试商品'
+    });
+    DB.addStock('wh1', it.id, 100);
+    return it.id;
+  });
   const init = await db(() => ({
     itemId: DB.list('items').filter(i => !i.disabled)[0].id,
     itemCode: DB.list('items').filter(i => !i.disabled)[0].code,

@@ -31,6 +31,32 @@ const BASE = "http://127.0.0.1:8902/";
     await page.waitForSelector(".erp-shell", { timeout: 8000 });
     ok("admin 登录成功", await page.locator(".erp-shell").count() > 0);
 
+    console.log("== 0b. 准备最小测试数据（业务数据初始为空） ==");
+    await db(() => {
+        const it = DB.insert("items", { id: "it_test", code: "TEST0001", name: "测试商品", english_name: "Test Item", spec: "", brand: "测试", model: "", category_id: DB.list("categories")[0].id, product_type: "成品", sales_unit: "个", purchase_unit: "个", stock_unit: "个", sales_to_stock: 1, purchase_to_stock: 1, cost: 10, price: 25, min_price: 20, purchase_currency: "CNY", safety_stock: 5, max_stock: 100, weight: 0, volume: 0, remark: "测试" });
+        DB.addStock("wh1", it.id, 100);
+        const so = DB.insert("sales_orders", {
+            id: "so_seed1", no: "SO20260101001", channel: "一般销货", platform_no: "", customer_id: DB.list("customers")[0].id,
+            payment_status: "unpaid", payment_method: "现款现货", currency: "CNY", order_date: "2026-01-01", delivery_date: "2026-01-04",
+            status: "shipped", logistics_method: "圆通速递", sales_owner: "业务人员", shipment_no: "TEST001",
+            recipient_name: "测试客户", recipient_phone: "13800000000", shipping_address: "测试地址",
+            invoice_type: "不开发票", price_tax_mode: "含税", tax_type: "不计税", tax_rate: 0,
+            shipping_fee: 0, commission_rate: 0, platform_fee: 0, payment_fee: 0, other_fee: 0, settlement_tax_included: false,
+            taxable_amount: 50, tax_amount: 0, invoice_amount: 50, net_receipt: 50,
+            invoice_title: "", invoice_tax_id: "", invoice_no: "", invoice_date: "", invoice_status: "未开",
+            lines: [{ item_id: it.id, code: it.code, name: it.name, qty: 2, unit: "个", unit_price: 25, amount: 50, remark: "" }],
+            remark: "", created_by: "系统管理员"
+        });
+        DB.insert("shipments", {
+            id: "sh_seed1", no: "SH20260102001", sales_order_id: so.id, order_no: so.no, warehouse_id: "wh1",
+            ship_date: "2026-01-02", logistics_method: "圆通速递", shipment_no: "TEST001",
+            recipient_name: "测试客户", recipient_phone: "13800000000", shipping_address: "测试地址",
+            lines: so.lines.map(l => Object.assign({}, l)), remark: "", created_by: "李仓管"
+        });
+        return true;
+    });
+    ok("测试商品/订单/出货单已插入", (await db(() => ({ items: DB.list("items").length, so: DB.list("sales_orders").length, sh: DB.list("shipments").length }))).items >= 1);
+
     console.log("== 1. 全部页面遍历渲染 ==");
     const routes = [
         ["#/dashboard", "仪表板"],
@@ -127,7 +153,7 @@ const BASE = "http://127.0.0.1:8902/";
     await page.waitForTimeout(800);
     ok("保存后跳回列表页", page.url().includes("#/sales-orders"), page.url());
     const newSoCount = await db(() => DB.list("sales_orders").length);
-    ok("订单已插入", newSoCount > 5);
+    ok("订单已插入", newSoCount === 2, "count=" + newSoCount);
 
     console.log("== 5. 空明细保存被拦截 ==");
     await page.goto(BASE + "#/sales-orders/create");

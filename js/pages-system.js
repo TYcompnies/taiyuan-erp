@@ -302,6 +302,7 @@ Pages.systemBackup = function () {
             <button class="btn primary" onclick="Pages.createBackup()">立即备份</button>
             <button class="btn ghost" onclick="Pages.exportData()">导出数据(JSON)</button>
             <button class="btn ghost" onclick="Pages.importData()">导入数据(JSON)</button>
+            <button class="btn danger" onclick="Pages.clearBusinessData()">清空业务数据</button>
         </div>
     </div>
     <div class="kpi-grid">
@@ -317,14 +318,26 @@ Pages.systemBackup = function () {
     renderShell("system_backup", content, "首页 / 系统设置 / 系统备份");
 };
 
+/* 清空业务数据（保留基础资料与账号） */
+Pages.clearBusinessData = function () {
+    confirmModal(
+        "确定要清空全部业务数据吗？将删除：销货单、出货单、采购单、库存调整、销货退回/折让、采购退回/折让、费用支出、传票作业、商品主档及全部库存（安全库存一并清零）。<br><br>系统账号、客户、供应商、仓库、币别、单位、分类等基础资料会保留。此操作不可撤销！",
+        () => {
+            DB.clearBusiness();
+            toast("已清空全部业务数据", "success");
+            setTimeout(() => { location.hash = "#/system/backup"; location.reload(); }, 600);
+        },
+        "清空业务数据"
+    );
+};
+
 Pages.createBackup = function () {
     const data = JSON.parse(JSON.stringify(DB._mem));
     // 清理备份记录中的历史快照，避免快照嵌套导致存储体积无限膨胀
     (data.backups || []).forEach(b => { delete b.snapshot; });
     const size = Math.max(1, Math.round(JSON.stringify(data).length / 1024));
     DB.insert("backups", {
-        no: nextDocNo("BK", "backups"), date: Utils.now(),
-        size: (size / 1024).toFixed(1) + " MB",
+        no: nextDocNo("BK", "backups"), date: Utils.now(),        size: (size / 1024).toFixed(1) + " MB",
         note: "手动备份",
         snapshot: JSON.stringify(data)
     });

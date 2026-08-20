@@ -57,23 +57,23 @@ const { chromium } = require('playwright');
   check(await page.locator('.sidebar').count() === 1, '侧边栏渲染');
   await page.screenshot({ path: shots + '/02-dashboard.png', fullPage: true });
 
-  // 4. 销货订单（日常作业组）
+  // 4. 销货订单（日常作业组，业务数据已清空应显示空态）
   await navTo('日常作业', '销货订单');
   let t2 = await page.textContent('body');
   check(t2.includes('销货订单') && t2.includes('新增'), '销货订单列表页渲染');
-  check(t2.includes('SO2026'), '销货订单列表有种子数据单号');
+  check(!t2.includes('SO2026') && t2.includes('共 0 笔销货订单'), '销货订单列表为空（业务数据已清空）');
   await page.screenshot({ path: shots + '/03-sales-orders.png', fullPage: true });
 
   // 5. 采购单页（日常作业组，菜单文案为"采购单"）
   await navTo('日常作业', '采购单');
   t2 = await page.textContent('body');
-  check(t2.includes('采购') && t2.includes('PO2026'), '采购单列表页渲染且有种子数据');
+  check(t2.includes('采购') && !t2.includes('PO2026') && t2.includes('暂无采购单'), '采购单列表为空（业务数据已清空）');
   await page.screenshot({ path: shots + '/04-purchase.png', fullPage: true });
 
-  // 6. 商品主档（基本资料组）
+  // 6. 商品主档（基本资料组，商品已清空应显示空态）
   await navTo('基本资料', '商品主档');
   t2 = await page.textContent('body');
-  check(t2.includes('越南') && t2.includes('咖啡'), '商品主档列表渲染有商品数据');
+  check(!t2.includes('越南') && t2.includes('没有符合的商品'), '商品主档列表为空（商品已清空）');
   await page.screenshot({ path: shots + '/05-items.png', fullPage: true });
 
   // 7. 库存总览（报表查询组）

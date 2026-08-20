@@ -36,31 +36,31 @@ assert(COMPANY.name === '义乌市钛沅商贸有限公司', '公司名称为 �
 assert(COMPANY.short === '钛沅商贸', '公司简称正确');
 assert(!/[繁體字]/.test(COMPANY.name), '公司名称为简体');
 
-console.log('=== 2. 种子数据 ===');
+console.log('=== 2. 种子数据（业务数据为空，基础资料保留） ===');
 assert(coll('warehouses').length === 2, '2 个仓库');
 assert(coll('currencies').length === 6, '6 种币别');
 assert(coll('categories').length === 6, '6 个分类');
 assert(coll('units').length === 8, '8 个单位');
 assert(coll('shipping_methods').length === 10, '10 种物流方式');
 assert(coll('payment_terms').length === 6, '6 种付款条件');
-assert(coll('items').length === 21, '21 个商品');
+assert(coll('items').length === 0, '商品主档为空');
 assert(coll('customers').length === 6, '6 个客户');
 assert(coll('suppliers').length === 4, '4 个供应商');
-assert(coll('sales_orders').length === 8, '8 张销货订单');
-assert(coll('shipments').length === 5, '5 张出货单');
-assert(coll('purchase_orders').length === 4, '4 张采购单');
-assert(coll('inventory_adjusts').length === 2, '2 张库存调整');
-assert(coll('sales_returns').length === 1, '1 张销货退回');
-assert(coll('purchase_returns').length === 1, '1 张采购退回');
-assert(coll('expenses').length === 5, '5 笔费用');
-assert(coll('vouchers').length === 4, '4 张传票');
+assert(coll('sales_orders').length === 0, '销货订单为空');
+assert(coll('shipments').length === 0, '出货单为空');
+assert(coll('purchase_orders').length === 0, '采购单为空');
+assert(coll('inventory_adjusts').length === 0, '库存调整为空');
+assert(coll('sales_returns').length === 0, '销货退回为空');
+assert(coll('purchase_returns').length === 0, '采购退回为空');
+assert(coll('expenses').length === 0, '费用支出为空');
+assert(coll('vouchers').length === 0, '传票为空');
 assert(coll('roles').length === 5, '5 个角色');
 assert(coll('users').length === 4, '4 个用户');
 
 console.log('=== 3. 库存映射 ===');
 const sm = DB.stockMap();
-assert(Object.keys(sm).length > 0, '库存映射非空');
-assert(DB.stockOf('wh1', 'it_605900001') >= 0, '可查询仓库库存');
+assert(Object.keys(sm).length === 0, '库存映射为空（库存清零）');
+assert(DB.stockOf('wh1', 'it_605900001') === 0, '查询空库存返回 0');
 
 console.log('=== 4. 单号生成 ===');
 const n1 = Utils.nextNo('SO', '2026-08-19', coll('sales_orders'));
@@ -78,14 +78,27 @@ assert(PERMISSIONS.length >= 30, '权限代码 >= 30 个');
 const adminRole = coll('roles').find(r => r.id === 'r1');
 assert(adminRole && adminRole.permissions.length === PERMISSIONS.length, '系统管理员角色拥有全部权限');
 
-console.log('=== 7. 财务计算 ===');
-const so = coll('sales_orders')[0];
-assert(Utils.num(so.invoice_amount) > 0, '销货订单金额 > 0');
-const sum = so.lines.reduce((t, l) => t + Utils.num(l.qty) * Utils.num(l.unit_price), 0);
-assert(Math.abs(sum - Utils.num(so.invoice_amount)) < 0.01, '订单明细合计 = 发票金额');
+console.log('=== 7. 财务计算（临时插入测试单据） ===');
+const tItem = DB.insert('items', { id: 'it_test1', code: 'TEST001', name: '测试商品', sales_unit: '个', price: 100, cost: 50 });
+const tSO = DB.insert('sales_orders', { id: 'so_test1', no: 'SO20260819001', invoice_amount: 200, lines: [{ item_id: 'it_test1', qty: 2, unit_price: 100, amount: 200 }] });
+assert(Utils.num(tSO.invoice_amount) > 0, '销货订单金额 > 0');
+const sum = tSO.lines.reduce((t, l) => t + Utils.num(l.qty) * Utils.num(l.unit_price), 0);
+assert(Math.abs(sum - Utils.num(tSO.invoice_amount)) < 0.01, '订单明细合计 = 发票金额');
+DB.remove('items', tItem.id);
+DB.remove('sales_orders', tSO.id);
+
+console.log('=== 7b. 清空业务数据（clearBusiness） ===');
+DB.insert('sales_orders', { id: 'so_x', no: 'SO20260819002', invoice_amount: 99, lines: [] });
+DB.insert('items', { id: 'it_x', code: 'X001', name: '临时商品' });
+DB.clearBusiness();
+assert(coll('sales_orders').length === 0, '清空后销货订单为 0');
+assert(coll('items').length === 0, '清空后商品主档为 0');
+assert(coll('customers').length === 6, '清空后客户保留');
+assert(coll('warehouses').length === 2, '清空后仓库保留');
+assert(Object.keys(DB.stockMap()).length === 0, '清空后库存为 0');
 
 console.log('=== 8. 关联名称查找 ===');
-assert(DB.itemName('it_605900001') !== '-', '商品名称查找正常: ' + DB.itemName('it_605900001'));
+assert(DB.itemName(tItem.id) === '-', '不存在的商品返回占位符');
 assert(DB.customerName(coll('customers')[0].id) !== '-', '客户名称查找正常');
 assert(DB.supplierName(coll('suppliers')[0].id) !== '-', '供应商名称查找正常');
 assert(DB.warehouseName('wh1') === '主仓库', '仓库名称查找正常');

@@ -38,7 +38,7 @@ const { chromium } = require('playwright');
   await page.locator('.menu-link').filter({ hasText: '销货订单' }).first().click();
   await page.waitForTimeout(1000);
   body = await page.textContent('body');
-  check(body.includes('销货订单') && body.includes('SO2026'), '线上销货订单页有种子数据');
+  check(body.includes('销货订单') && !body.includes('SO2026') && body.includes('共 0 笔销货订单'), '线上销货订单页为空（业务数据已清空）');
   check(errors.length === 0, '线上无 JS 错误' + (errors.length ? ' -> ' + errors.join(' | ') : ''));
 
   console.log(`\n== 线上验证: ${pass} 通过, ${fail} 失败 ==`);
