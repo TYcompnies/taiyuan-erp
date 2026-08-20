@@ -17,12 +17,12 @@ function itemOptions(selectedId) {
 }
 function customerOptions(selectedId) {
     return DB.list("customers").filter(c => !c.disabled).map(c =>
-        `<option value="${c.id}" data-code="${h(c.code)}" data-currency="${h(c.currency || "")}" ${selectedId === c.id ? "selected" : ""}>${h(c.code)} - ${h(c.name)}</option>`
+        `<option value="${c.id}" data-code="${h(c.code)}" data-currency="${h(c.currency || "")}" data-payment="${h(c.payment_method || "")}" ${selectedId === c.id ? "selected" : ""}>${h(c.code)} - ${h(c.name)}</option>`
     ).join("");
 }
 function supplierOptions(selectedId) {
     return DB.list("suppliers").filter(s => !s.disabled).map(s =>
-        `<option value="${s.id}" data-currency="${h(s.currency || "")}" ${selectedId === s.id ? "selected" : ""}>${h(s.code)} - ${h(s.name)}</option>`
+        `<option value="${s.id}" data-currency="${h(s.currency || "")}" data-payment="${h(s.payment_method || "")}" ${selectedId === s.id ? "selected" : ""}>${h(s.code)} - ${h(s.name)}</option>`
     ).join("");
 }
 function warehouseOptions(selectedId) {
@@ -36,8 +36,10 @@ function currencyOptions(selectedId) {
     ).join("");
 }
 function payMethodOptions(selected) {
-    const list = ["现款现货", "货到付款", "月结30天", "月结60天", "预付50%", "支付宝/微信"];
-    return list.map(m => `<option ${selected === m ? "selected" : ""}>${m}</option>`).join("");
+    // 联动：付款方式下拉框动态读取「付款条件」主档，主档新增/修改/删除即时反映到全部表单
+    const terms = DB.list("payment_terms").map(t => t.name);
+    if (selected && !terms.includes(selected)) terms.push(selected); // 保留旧数据值，防止编辑时丢失
+    return terms.map(m => `<option ${selected === m ? "selected" : ""}>${h(m)}</option>`).join("");
 }
 function feeMethodOptions(selected) {
     const list = ["现金", "银行转账", "支付宝", "微信", "支票"];
@@ -684,6 +686,9 @@ Pages.syncCustomerCurrency = function (select) {
     const opt = select.options[select.selectedIndex];
     const target = document.querySelector('[name="currency"]');
     if (opt && opt.dataset.currency && target) target.value = opt.dataset.currency;
+    // 联动：选择客户后自动带入该客户的付款方式（付款条件主档同步）
+    const payTarget = document.querySelector('[name="payment_method"]');
+    if (opt && opt.dataset.payment && payTarget) payTarget.value = opt.dataset.payment;
 };
 
 Pages.bindSalesFormEvents = function () {
@@ -1068,6 +1073,9 @@ Pages.syncSupplierCurrency = function (select) {
     const opt = select.options[select.selectedIndex];
     const target = document.querySelector('[name="currency"]');
     if (opt && opt.dataset.currency && target) target.value = opt.dataset.currency;
+    // 联动：选择供应商后自动带入该供应商的付款方式（付款条件主档同步）
+    const payTarget = document.querySelector('[name="payment_method"]');
+    if (opt && opt.dataset.payment && payTarget) payTarget.value = opt.dataset.payment;
 };
 
 Pages.savePO = function (e, id) {

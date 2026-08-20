@@ -251,7 +251,7 @@ Pages.customerForm = function (id) {
             <div class="form-item"><label>国家/地区</label><input name="country" value="${h(c ? c.country : "")}"></div>
             <div class="form-item wide"><label>地址</label><input name="address" value="${h(c ? c.address : "")}"></div>
             <div class="form-item"><label>统一编号</label><input name="tax_id" value="${h(c ? c.tax_id : "")}"></div>
-            <div class="form-item"><label>付款方式</label><select name="payment_method">${payMethodOptions(c ? c.payment_method : "")}</select></div>
+            <div class="form-item"><label>付款方式</label><select name="payment_method" onchange="Pages.syncPayDays(this)">${payMethodOptions(c ? c.payment_method : "")}</select></div>
             <div class="form-item"><label>付款天数</label><input type="number" name="payment_days" value="${c ? c.payment_days : 0}"></div>
             <div class="form-item"><label>币别</label><select name="currency">${curOpts}</select></div>
             <div class="form-item"><label>信用额度</label><input type="number" name="credit_limit" value="${c ? c.credit_limit : 0}"></div>
@@ -295,6 +295,13 @@ Pages.saveCustomer = function (e, id) {
         toast("客户已新增", "success");
     }
     setTimeout(() => { location.hash = "#/master/customers"; }, 300);
+};
+
+// 联动：选择付款方式后自动带出该付款条件的付款天数（来自付款条件主档）
+Pages.syncPayDays = function (sel) {
+    const t = DB.find("payment_terms", x => x.name === sel.value);
+    const days = document.querySelector('[name="payment_days"]');
+    if (t && days) days.value = Utils.num(t.days);
 };
 
 /* ============================================================
@@ -363,7 +370,7 @@ Pages.supplierForm = function (id) {
             <div class="form-item"><label>国家/地区</label><input name="country" value="${h(s ? s.country : "")}"></div>
             <div class="form-item wide"><label>地址</label><input name="address" value="${h(s ? s.address : "")}"></div>
             <div class="form-item"><label>统一编号</label><input name="tax_id" value="${h(s ? s.tax_id : "")}"></div>
-            <div class="form-item"><label>付款方式</label><select name="payment_method">${payMethodOptions(s ? s.payment_method : "")}</select></div>
+            <div class="form-item"><label>付款方式</label><select name="payment_method" onchange="Pages.syncPayDays(this)">${payMethodOptions(s ? s.payment_method : "")}</select></div>
             <div class="form-item"><label>付款天数</label><input type="number" name="payment_days" value="${s ? s.payment_days : 0}"></div>
             <div class="form-item"><label>币别</label><select name="currency">${curOpts}</select></div>
             <div class="form-item"><label>信用额度</label><input type="number" name="credit_limit" value="${s ? s.credit_limit : 0}"></div>
@@ -704,6 +711,21 @@ Pages.saveSimpleMaster = function (e, coll, id) {
     } else {
         DB.insert(coll, payload);
         toast("已新增", "success");
+    }
+    // 联动：付款条件新增/修改后，自动同步引用它的客户与供应商的付款方式/付款天数
+    if (coll === "payment_terms") {
+        const newName = payload.name, newDays = Utils.num(payload.days) || 0;
+        const oldName = r ? r.name : null;
+        DB.list("customers").forEach(c => {
+            if (c.payment_method === newName || (oldName && c.payment_method === oldName)) {
+                DB.update("customers", c.id, { payment_method: newName, payment_days: newDays });
+            }
+        });
+        DB.list("suppliers").forEach(s => {
+            if (s.payment_method === newName || (oldName && s.payment_method === oldName)) {
+                DB.update("suppliers", s.id, { payment_method: newName, payment_days: newDays });
+            }
+        });
     }
     document.querySelector(".modal-mask")?.remove();
     render();

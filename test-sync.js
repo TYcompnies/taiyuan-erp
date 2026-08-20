@@ -34,6 +34,8 @@ const near = (a, b, eps) => Math.abs(parseFloat(a || 0) - b) < (eps === undefine
     await page.waitForTimeout(1000);
   }
   async function gotoHash(hash) {
+    // 切换页面时清理残留弹窗（modal 挂在 body，路由切换不会自动移除）
+    await page.evaluate(() => document.querySelectorAll('.modal-mask').forEach(m => m.remove()));
     await page.evaluate(h => { location.hash = h; }, hash);
     await page.waitForTimeout(700);
   }
@@ -219,6 +221,71 @@ const near = (a, b, eps) => Math.abs(parseFloat(a || 0) - b) < (eps === undefine
   } else {
     check(false, '未找到传票借贷输入行');
   }
+
+  // ========== 10. 付款条件联动：主档新增→下拉可见、选择自动带出、修改同步引用 ==========
+  console.log('\n[10] 付款条件联动：主档新增→下拉可见、选择自动带出、修改同步引用');
+  // 10.1 付款条件主档新增「预付70%」（days=30）
+  await gotoHash('#/master/payment_terms');
+  await page.locator('button:has-text("新增付款条件")').click();
+  await page.waitForTimeout(400);
+  await page.locator('#smForm input[name=name]').fill('预付70%');
+  await page.locator('#smForm input[name=days]').fill('30');
+  await page.locator('.modal-mask .modal-foot .btn.primary').click();
+  await page.waitForTimeout(600);
+  check(!!(await db(() => DB.find('payment_terms', x => x.name === '预付70%'))), '付款条件「预付70%」已新增到主档');
+
+  // 10.2 供应商主档表单下拉动态包含新增的付款条件
+  await gotoHash('#/master/suppliers/create');
+  let opts = await page.locator('[name=payment_method] option').allTextContents();
+  check(opts.includes('预付70%'), '供应商付款方式下拉包含「预付70%」');
+  check(opts.includes('月结30天') && opts.includes('平台已付款'), '下拉包含既有付款条件（月结30天/平台已付款）');
+
+  // 10.3 选择付款方式自动带出付款天数（联动）
+  await page.locator('[name=payment_method]').selectOption('预付70%');
+  await page.waitForTimeout(300);
+  check(near(await page.locator('[name=payment_days]').inputValue(), 30), '供应商表单选择「预付70%」后付款天数自动 = 30');
+
+  // 10.4 客户主档表单下拉同样包含
+  await gotoHash('#/master/customers/create');
+  opts = await page.locator('[name=payment_method] option').allTextContents();
+  check(opts.includes('预付70%'), '客户付款方式下拉包含「预付70%」');
+  await page.locator('[name=payment_method]').selectOption('月结60天');
+  await page.waitForTimeout(300);
+  check(near(await page.locator('[name=payment_days]').inputValue(), 60), '客户表单选择「月结60天」后付款天数自动 = 60');
+
+  // 10.5 销货订单：选择客户自动带入客户付款方式（联动）
+  await gotoHash('#/sales-orders/create');
+  await page.locator('[name=customer_id]').selectOption(ids.cu);
+  await page.waitForTimeout(300);
+  check((await page.locator('[name=payment_method]').inputValue()) === '现款现货', '销货订单选择客户后收款方式自动带入「现款现货」');
+
+  // 10.6 采购单：选择供应商自动带入供应商付款方式（联动）
+  await gotoHash('#/purchase-orders/create');
+  await page.locator('[name=supplier_id]').selectOption(ids.sp);
+  await page.waitForTimeout(300);
+  check((await page.locator('[name=payment_method]').inputValue()) === '现款现货', '采购单选择供应商后付款方式自动带入「现款现货」');
+
+  // 10.7 修改付款条件「预付50%」days=45 → 引用它的供应商自动同步
+  await gotoHash('#/master/payment_terms');
+  await page.locator('tr:has-text("预付50%") .link-btn:has-text("编辑")').first().click();
+  await page.waitForTimeout(400);
+  await page.locator('#smForm input[name=days]').fill('45');
+  await page.locator('.modal-mask .modal-foot .btn.primary').click();
+  await page.waitForTimeout(600);
+  const sync1 = await db(() => {
+    const s = DB.list('suppliers').find(x => x.code === 'SUP000001');
+    return s ? { m: s.payment_method, d: s.payment_days } : null;
+  });
+  check(!!sync1 && sync1.m === '预付50%' && sync1.d === 45, '付款条件天数改45后供应商 SUP000001 自动同步 = 45');
+  check(await db(() => DB.list('suppliers').find(x => x.code === 'SUP000002').payment_days) === 45, '供应商 SUP000002 也自动同步 = 45');
+  check(await db(() => DB.list('customers').find(x => x.code === 'CUS000001').payment_days) === 30, '未引用该条件的客户不受影响（CUS000001 仍 30）');
+  // 还原预付50%天数为 0，避免影响其他测试断言
+  await page.locator('tr:has-text("预付50%") .link-btn:has-text("编辑")').first().click();
+  await page.waitForTimeout(400);
+  await page.locator('#smForm input[name=days]').fill('0');
+  await page.locator('.modal-mask .modal-foot .btn.primary').click();
+  await page.waitForTimeout(600);
+  check(await db(() => DB.list('suppliers').find(x => x.code === 'SUP000001').payment_days) === 0, '还原后 SUP000001 付款天数回到 0');
 
   check(errors.length === 0, '全程无 JS 错误' + (errors.length ? '：' + errors.join(' ; ') : ''));
 

@@ -42,7 +42,7 @@ assert(coll('currencies').length === 6, '6 种币别');
 assert(coll('categories').length === 6, '6 个分类');
 assert(coll('units').length === 8, '8 个单位');
 assert(coll('shipping_methods').length === 10, '10 种物流方式');
-assert(coll('payment_terms').length === 6, '6 种付款条件');
+assert(coll('payment_terms').length === 7, '7 种付款条件（含平台已付款）');
 assert(coll('items').length === 0, '商品主档为空');
 assert(coll('customers').length === 6, '6 个客户');
 assert(coll('suppliers').length === 4, '4 个供应商');

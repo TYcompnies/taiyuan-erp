@@ -322,7 +322,8 @@ DB.seed = function () {
         { id: "t3", name: "月结30天", days: 30, remark: "", created_at: now },
         { id: "t4", name: "月结60天", days: 60, remark: "", created_at: now },
         { id: "t5", name: "预付50%", days: 0, remark: "下单预付一半", created_at: now },
-        { id: "t6", name: "支付宝/微信", days: 0, remark: "线上即时支付", created_at: now }
+        { id: "t6", name: "支付宝/微信", days: 0, remark: "线上即时支付", created_at: now },
+        { id: "t7", name: "平台已付款", days: 0, remark: "淘宝/拼多多/抖音平台订单已付款", created_at: now }
     ];
 
     /* ---- 商品（初始为空，由用户自行建立） ---- */
