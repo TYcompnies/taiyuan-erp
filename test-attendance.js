@@ -3,7 +3,7 @@
  * 验证出勤系统完整嵌入 ERP，设置保持不变，功能正常可用。
  */
 const { chromium } = require('playwright');
-const BASE = process.env.BASE || 'http://127.0.0.1:8903';
+const BASE = process.env.BASE || 'http://127.0.0.1:8902';
 
 let pass = 0, fail = 0;
 const results = [];
