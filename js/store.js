@@ -102,7 +102,20 @@ const DB = {
             this.flush();
         }
         this.migrateAccounting();
+        this.migrateAttendance();
         this._loaded = true;
+    },
+
+    /* 出勤模块迁移：为所有角色补入出勤管理入口权限（出勤系统内部有自己的登录与管理员权限体系） */
+    migrateAttendance() {
+        let dirty = false;
+        (this._mem.roles || []).forEach(r => {
+            if (!(r.permissions || []).includes("attendance.view")) {
+                r.permissions.push("attendance.view");
+                dirty = true;
+            }
+        });
+        if (dirty) this.flush();
     },
 
     /* 会计模块迁移：旧数据补入会计科目表与角色权限（不动业务数据） */
@@ -286,6 +299,7 @@ const PERMISSIONS = [
     { code: "inventory.adjust", label: "执行库存调整", group: "日常作业" },
     { code: "sales_return.view", label: "查看销货退回/折让", group: "日常作业" },
     { code: "purchase_return.view", label: "查看采购退回/折让", group: "日常作业" },
+    { code: "attendance.view", label: "出勤管理", group: "出勤管理" },
     { code: "finance.ar", label: "应收账款", group: "账款财务" },
     { code: "finance.ap", label: "应付账款", group: "账款财务" },
     { code: "finance.expense", label: "费用支出", group: "账款财务" },

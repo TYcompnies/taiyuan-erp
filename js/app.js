@@ -193,6 +193,11 @@ const MENU = [
         ]
     },
     {
+        group: "出勤管理", key: "attendance", items: [
+            { code: "attendance", label: "出勤管理", hash: "#/attendance", perm: "attendance.view" }
+        ]
+    },
+    {
         group: "账款财务", key: "finance", items: [
             { code: "accounts_receivable", label: "应收账款", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
             { code: "accounts_payable", label: "应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
@@ -644,6 +649,7 @@ function route(hash) {
         "accounting/trial-balance": () => Pages.trialBalance(),
         "accounting/balance-sheet": () => Pages.balanceSheet(),
         "tools/cloud-sync": () => Pages.cloudSync(),
+        "attendance": () => Pages.attendancePage(),
         "master/items": () => Pages.items(),
         "master/items/create": () => Pages.itemForm(),
         "master/customers": () => Pages.customers(),

@@ -1,0 +1,3175 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="專業WiFi打卡出勤管理系統，支援IP白名單驗證、即時打卡、考勤記錄與統計分析">
+  <!-- v2.12：防止手機瀏覽器快取舊版 HTML — 這是手機同步失敗的最大根因 -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⏰</text></svg>">
+  <title>智能出勤管理系統 | WiFi打卡</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --primary: #4f46e5; --primary-dark: #4338ca; --primary-light: #6366f1;
+      --success: #10b981; --success-dark: #059669; --danger: #ef4444; --warning: #f59e0b;
+      --bg: #f0f2f5; --card-bg: #ffffff; --text: #1f2937; --text-secondary: #6b7280;
+      --border: #e5e7eb; --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+      --radius: 12px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* Login */
+    .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; }
+    .login-card { background: var(--card-bg); border-radius: 20px; padding: 40px; width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .login-logo { text-align: center; margin-bottom: 30px; }
+    .login-logo .icon { width: 72px; height: 72px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 36px; margin-bottom: 16px; }
+    .login-logo h1 { font-size: 24px; font-weight: 700; }
+    .login-logo p { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .form-group input, .form-group select { width: 100%; padding: 12px 16px; border: 2px solid var(--border); border-radius: 10px; font-size: 15px; outline: none; transition: border-color 0.2s; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--primary); }
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { background: var(--success-dark); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-outline { background: transparent; border: 2px solid var(--border); color: var(--text); }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-sm { padding: 8px 16px; font-size: 14px; width: auto; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Dashboard */
+    .dashboard { display: none; min-height: 100vh; }
+    .dashboard.active { display: block; }
+    .topbar { background: var(--card-bg); border-bottom: 1px solid var(--border); padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+    .topbar-left { display: flex; align-items: center; gap: 16px; }
+    .topbar-logo { display: flex; align-items: center; gap: 10px; }
+    .topbar-logo .icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .topbar-logo span { font-size: 18px; font-weight: 700; }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .sync-badge { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .sync-badge:hover { transform: scale(1.05); }
+    .sync-badge.synced { background: rgba(34,197,94,0.12); color: var(--success); border: 1px solid rgba(34,197,94,0.3); }
+    .sync-badge.syncing { background: rgba(59,130,246,0.12); color: var(--primary); border: 1px solid rgba(59,130,246,0.3); animation: pulse 1.5s infinite; }
+    .sync-badge.offline { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+    .sync-badge.error { background: rgba(239,68,68,0.12); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+    .sync-badge .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .sync-badge.synced .dot { background: var(--success); }
+    .sync-badge.syncing .dot { background: var(--primary); }
+    .sync-badge.offline .dot { background: #f59e0b; }
+    .sync-badge.error .dot { background: var(--danger); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .sync-warning { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 1px solid #f59e0b; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; font-size: 14px; }
+    .user-info { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg); border-radius: 20px; }
+    .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
+    .user-name { font-size: 14px; font-weight: 600; }
+    .user-role { font-size: 12px; color: var(--text-secondary); }
+    .nav-tabs { display: flex; gap: 4px; }
+    .nav-tab { padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; background: transparent; color: var(--text-secondary); }
+    .nav-tab:hover { background: var(--bg); }
+    .nav-tab.active { background: var(--primary); color: white; }
+    .main-content { padding: 24px; max-width: 1200px; margin: 0 auto; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Clock */
+    .clock-container { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+    .clock-card { background: var(--card-bg); border-radius: var(--radius); padding: 40px; width: 100%; max-width: 500px; text-align: center; box-shadow: var(--shadow-lg); }
+    .clock-time { font-size: 48px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--primary); margin: 20px 0; }
+    .clock-date { font-size: 16px; color: var(--text-secondary); margin-bottom: 24px; }
+    .clock-status { display: flex; justify-content: space-around; margin-bottom: 24px; gap: 16px; }
+    .status-item { flex: 1; padding: 16px; background: var(--bg); border-radius: 10px; }
+    .status-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+    .status-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .status-value.success { color: var(--success); }
+    .status-value.danger { color: var(--danger); }
+    .status-value.pending { color: var(--text-secondary); }
+    .clock-buttons { display: flex; gap: 12px; justify-content: center; }
+    .clock-buttons .btn { flex: 1; max-width: 200px; }
+    .wifi-status { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 500; }
+    .wifi-status.verified { background: #d1fae5; color: var(--success-dark); }
+    .wifi-status.unverified { background: #fee2e2; color: var(--danger); }
+    .wifi-status.disabled { background: #f3f4f6; color: var(--text-secondary); }
+    .wifi-status.checking { background: #fef3c7; color: #d97706; }
+
+    /* Stats */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--card-bg); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+    .stat-card .label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+    .stat-card .value { font-size: 32px; font-weight: 700; }
+    .stat-card .icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 12px; }
+    .stat-card.blue .icon { background: #dbeafe; color: #2563eb; }
+    .stat-card.green .icon { background: #d1fae5; color: var(--success-dark); }
+    .stat-card.orange .icon { background: #fef3c7; color: #d97706; }
+    .stat-card.purple .icon { background: #ede9fe; color: #7c3aed; }
+
+    /* Summary cards */
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .summary-card { background: var(--bg); border-radius: 10px; padding: 16px; text-align: center; }
+    .summary-card .val { font-size: 24px; font-weight: 700; }
+    .summary-card .lbl { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+    /* Card & Table */
+    .card { background: var(--card-bg); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); margin-bottom: 24px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .card-title { font-size: 18px; font-weight: 700; }
+    .table-wrapper { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+    th { font-weight: 600; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:hover { background: var(--bg); }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge-success { background: #d1fae5; color: var(--success-dark); }
+    .badge-warning { background: #fef3c7; color: #d97706; }
+    .badge-danger { background: #fee2e2; color: var(--danger); }
+    .badge-info { background: #dbeafe; color: #2563eb; }
+
+    /* Forms */
+    .filter-bar { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; }
+    .filter-bar .form-group { margin-bottom: 0; flex: 1; min-width: 150px; }
+    .search-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+    .search-bar input { flex: 1; padding: 10px 16px; border: 2px solid var(--border); border-radius: 10px; font-size: 14px; outline: none; }
+    .search-bar input:focus { border-color: var(--primary); }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 200; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: var(--card-bg); border-radius: var(--radius); padding: 30px; width: 100%; max-width: 480px; box-shadow: var(--shadow-lg); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .modal-title { font-size: 20px; font-weight: 700; }
+    .modal-close { width: 32px; height: 32px; border: none; background: var(--bg); border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+
+    /* Confirm dialog */
+    .confirm-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 250; align-items: center; justify-content: center; padding: 20px; }
+    .confirm-overlay.active { display: flex; }
+    .confirm-box { background: var(--card-bg); border-radius: var(--radius); padding: 30px; width: 100%; max-width: 380px; text-align: center; box-shadow: var(--shadow-lg); }
+    .confirm-box .icon { font-size: 48px; margin-bottom: 16px; }
+    .confirm-box .msg { font-size: 16px; margin-bottom: 24px; line-height: 1.5; }
+    .confirm-box .btns { display: flex; gap: 12px; }
+    .confirm-box .btns .btn { flex: 1; }
+
+    /* Toast */
+    .toast-container { position: fixed; top: 80px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+    .toast { padding: 14px 20px; border-radius: 10px; color: white; font-size: 14px; font-weight: 500; box-shadow: var(--shadow-lg); animation: slideIn 0.3s ease; max-width: 360px; }
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--danger); }
+    .toast.info { background: var(--primary); }
+    .toast.warning { background: var(--warning); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .nav-tabs { display: none; }
+      .main-content { padding: 16px; }
+      .clock-time { font-size: 36px; }
+      .topbar { padding: 0 12px; }
+      .user-name, .user-role { display: none; }
+      .filter-bar { flex-direction: column; }
+    }
+    .mobile-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--card-bg); border-top: 1px solid var(--border); padding: 8px; z-index: 100; }
+    .mobile-nav button { flex: 1; padding: 8px 4px; border: none; background: transparent; font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+    .mobile-nav button.active { color: var(--primary); font-weight: 600; }
+    @media (max-width: 768px) { .mobile-nav { display: flex; justify-content: space-around; } .main-content { padding-bottom: 80px; } }
+    .section-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+    .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .info-banner { padding: 12px 16px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .info-banner.blue { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .checkbox-label input { width: auto; }
+    .schedule-row { display: flex; gap: 12px; align-items: flex-end; }
+    .schedule-row .form-group { flex: 1; margin-bottom: 0; }
+    .hint-text { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+    .action-btns { display: flex; gap: 6px; }
+    .leave-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .leave-days-preview { padding: 10px 12px; background: var(--bg); border-radius: 8px; font-weight: 700; color: var(--primary); font-size: 16px; }
+    .leave-days-preview.invalid { color: var(--danger); }
+    .btn-approve { background: var(--success); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-approve:hover { opacity: 0.85; }
+    .btn-reject { background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-reject:hover { opacity: 0.85; }
+    .btn-cancel-leave { background: #e5e7eb; color: #374151; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-cancel-leave:hover { background: #d1d5db; }
+    .review-note-cell { max-width: 160px; color: var(--text-secondary); font-size: 12px; word-break: break-all; }
+  </style>
+</head>
+<body>
+
+<!-- Login Page -->
+<div id="loginPage" class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="icon">⏰</div>
+      <h1>智能出勤管理系統</h1>
+      <p>WiFi連線打卡 · 專業考勤管理</p>
+    </div>
+    <form id="loginForm">
+      <div class="form-group">
+        <label>員工編號</label>
+        <input type="text" id="loginEmployeeId" placeholder="請輸入員工編號" required maxlength="20">
+      </div>
+      <div class="form-group">
+        <label>密碼</label>
+        <input type="password" id="loginPassword" placeholder="請輸入密碼" required maxlength="50">
+      </div>
+      <button type="submit" class="btn btn-primary">登入系統</button>
+    </form>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="dashboard">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">
+        <div class="icon">⏰</div>
+        <span>出勤管理系統</span>
+      </div>
+      <div class="nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-page="clock">打卡</button>
+        <button class="nav-tab" data-page="history">我的記錄</button>
+        <button class="nav-tab" data-page="leave">請假</button>
+        <button class="nav-tab admin-only" data-page="admin-stats" style="display:none">統計概覽</button>
+        <button class="nav-tab admin-only" data-page="admin-employees" style="display:none">員工管理</button>
+        <button class="nav-tab admin-only" data-page="admin-attendance" style="display:none">考勤記錄</button>
+        <button class="nav-tab admin-only" data-page="admin-leave" style="display:none">請假審批</button>
+        <button class="nav-tab admin-only" data-page="admin-wifi" style="display:none">WiFi設定</button>
+        <button class="nav-tab admin-only" data-page="admin-settings" style="display:none">系統設定</button>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="sync-badge offline" id="syncBadge" onclick="quickSync()" title="點擊立即同步">
+        <span class="dot"></span>
+        <span id="syncBadgeText">同步載入中</span>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar" id="userAvatar">A</div>
+        <div>
+          <div class="user-name" id="userName">Admin</div>
+          <div class="user-role" id="userRole">管理員</div>
+        </div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="openChangePasswordModal()">改密碼</button>
+      <button class="btn btn-outline btn-sm" onclick="logout()">登出</button>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div class="sync-warning" id="syncWarningBanner" style="display:none;">
+      <span style="font-size:20px;">⚠️</span>
+      <span><strong>尚未啟用雲端同步！</strong>手機和電腦的資料不會連動。請到「系統設定 → 雲端同步」建立同步碼，或在另一台裝置輸入同一個同步碼。</span>
+      <button class="btn btn-primary btn-sm" onclick="switchPage('admin-settings')" style="margin-left:auto;white-space:nowrap;">前往設定</button>
+    </div>
+    <!-- Clock Page -->
+    <div id="page-clock" class="page active">
+      <div class="clock-container">
+        <div class="clock-card">
+          <div class="clock-date" id="clockDate">載入中...</div>
+          <div class="clock-time" id="clockTime">00:00:00</div>
+          <div class="wifi-status checking" id="wifiStatus"><span>🔄 正在偵測網路環境...</span></div>
+          <div style="margin: 24px 0;">
+            <div class="clock-status">
+              <div class="status-item">
+                <div class="status-label">上班打卡</div>
+                <div class="status-value pending" id="clockInTime">--:--</div>
+              </div>
+              <div class="status-item">
+                <div class="status-label">下班打卡</div>
+                <div class="status-value pending" id="clockOutTime">--:--</div>
+              </div>
+              <div class="status-item">
+                <div class="status-label">工作時數</div>
+                <div class="status-value pending" id="workHours">--</div>
+              </div>
+            </div>
+          </div>
+          <div class="clock-buttons">
+            <button class="btn btn-success" id="clockInBtn" onclick="clockIn()">上班打卡</button>
+            <button class="btn btn-danger" id="clockOutBtn" onclick="clockOut()">下班打卡</button>
+          </div>
+        </div>
+        <div class="info-banner blue">
+          <span>ℹ️</span>
+          <span>系統會自動偵測您的公共IP位址，只有在管理員設定的IP白名單內才能完成打卡。</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- History Page -->
+    <div id="page-history" class="page">
+      <div class="section-title">我的考勤記錄</div>
+      <div class="summary-grid" id="historySummary">
+        <div class="summary-card"><div class="val" id="sumTotalDays" style="color:var(--primary)">-</div><div class="lbl">總打卡天數</div></div>
+        <div class="summary-card"><div class="val" id="sumTotalHours" style="color:var(--success)">-</div><div class="lbl">總工作時數</div></div>
+        <div class="summary-card"><div class="val" id="sumAvgHours" style="color:#7c3aed">-</div><div class="lbl">平均每日時數</div></div>
+        <div class="summary-card"><div class="val" id="sumLateCount" style="color:var(--danger)">-</div><div class="lbl">遲到次數</div></div>
+        <div class="summary-card"><div class="val" id="sumLeaveDays" style="color:#1d4ed8">-</div><div class="lbl">請假天數</div></div>
+      </div>
+      <div class="card">
+        <div class="filter-bar">
+          <div class="form-group"><label>開始日期</label><input type="date" id="historyStartDate"></div>
+          <div class="form-group"><label>結束日期</label><input type="date" id="historyEndDate"></div>
+          <button class="btn btn-primary btn-sm" onclick="loadHistory()">查詢</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>日期</th><th>上班時間</th><th>下班時間</th><th>工作時數</th><th>WiFi驗證</th><th>IP位址</th><th>狀態</th></tr></thead>
+            <tbody id="historyTableBody"><tr><td colspan="7" class="empty-state">請點擊查詢載入資料</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leave Page (Employee) -->
+    <div id="page-leave" class="page">
+      <div class="section-title">請假申請</div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">📝 提出請假申請</div></div>
+        <div class="info-banner blue" style="margin-bottom: 20px;">
+          <span>ℹ️</span>
+          <span>請選擇假別、填寫起訖日期與原因，送出後需由管理員審批核准才算生效。天數將依起訖日期自動計算（含首尾日）。</span>
+        </div>
+        <div class="leave-form-grid">
+          <div class="form-group">
+            <label>假別 *</label>
+            <select id="leaveTypeSelect">
+              <option value="annual">特休（年假）</option>
+              <option value="personal">事假</option>
+              <option value="sick">病假</option>
+              <option value="marriage">婚假</option>
+              <option value="bereavement">喪假</option>
+              <option value="parental">產假 / 陪產假</option>
+              <option value="menstrual">生理假</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>開始日期 *</label>
+            <input type="date" id="leaveStartDate" onchange="updateLeaveDaysPreview()">
+          </div>
+          <div class="form-group">
+            <label>結束日期 *</label>
+            <input type="date" id="leaveEndDate" onchange="updateLeaveDaysPreview()">
+          </div>
+          <div class="form-group">
+            <label>請假天數</label>
+            <div class="leave-days-preview" id="leaveDaysPreview">--</div>
+          </div>
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label>請假原因 *</label>
+            <textarea id="leaveReasonInput" rows="3" placeholder="請簡述請假原因..." maxlength="200"></textarea>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="submitLeaveRequest()" style="margin-top: 16px;">送出申請</button>
+      </div>
+      <div class="card" style="margin-top: 20px;">
+        <div class="card-header"><div class="card-title">我的請假記錄</div></div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>申請日期</th><th>假別</th><th>起訖日期</th><th>天數</th><th>原因</th><th>狀態</th><th>操作</th></tr></thead>
+            <tbody id="myLeaveTableBody"><tr><td colspan="7" class="empty-state">載入中...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Stats -->
+    <div id="page-admin-stats" class="page">
+      <div class="section-title">統計概覽</div>
+      <div class="stats-grid">
+        <div class="stat-card blue"><div class="icon">👥</div><div class="label">在職員工數</div><div class="value" id="statTotalEmployees">-</div></div>
+        <div class="stat-card green"><div class="icon">✅</div><div class="label">今日已打卡</div><div class="value" id="statClockedIn">-</div></div>
+        <div class="stat-card orange"><div class="icon">🕐</div><div class="label">今日待打卡</div><div class="value" id="statNotClockedIn">-</div></div>
+        <div class="stat-card purple"><div class="icon">📊</div><div class="label">總考勤記錄</div><div class="value" id="statTotalRecords">-</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">近7日出勤趨勢</div></div>
+        <div id="dailyChart" style="height: 200px; display: flex; align-items: flex-end; gap: 12px; padding: 20px 0;"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">今日部門出勤</div></div>
+        <div class="table-wrapper">
+          <table><thead><tr><th>部門</th><th>打卡人數</th><th>記錄數</th></tr></thead>
+          <tbody id="deptTableBody"><tr><td colspan="3" class="empty-state">載入中...</td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Employees -->
+    <div id="page-admin-employees" class="page">
+      <div class="card-header" style="margin-bottom: 20px;">
+        <div class="section-title" style="margin: 0;">員工管理</div>
+        <button class="btn btn-primary btn-sm" onclick="showAddEmployeeModal()">+ 新增員工</button>
+      </div>
+      <div class="card">
+        <div class="search-bar">
+          <input type="text" id="employeeSearchInput" placeholder="搜尋員工編號或姓名..." oninput="loadEmployees()">
+        </div>
+        <div class="table-wrapper">
+          <table><thead><tr><th>員工編號</th><th>姓名</th><th>部門</th><th>角色</th><th>狀態</th><th>今日</th><th>建立時間</th><th>操作</th></tr></thead>
+          <tbody id="employeesTableBody"><tr><td colspan="8" class="empty-state">載入中...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Attendance -->
+    <div id="page-admin-attendance" class="page">
+      <div class="section-title">考勤記錄管理</div>
+      <div class="card">
+        <div class="filter-bar">
+          <div class="form-group"><label>開始日期</label><input type="date" id="adminAttStartDate"></div>
+          <div class="form-group"><label>結束日期</label><input type="date" id="adminAttEndDate"></div>
+          <div class="form-group"><label>員工編號</label><input type="text" id="adminAttEmployeeId" placeholder="留空查全部"></div>
+          <button class="btn btn-primary btn-sm" onclick="loadAdminAttendance()">查詢</button>
+          <button class="btn btn-outline btn-sm" onclick="exportCSV()">匯出CSV</button>
+        </div>
+        <div class="table-wrapper">
+          <table><thead><tr><th>日期</th><th>員工編號</th><th>姓名</th><th>部門</th><th>上班</th><th>下班</th><th>工作時數</th><th>WiFi</th><th>IP</th><th>狀態</th></tr></thead>
+          <tbody id="adminAttTableBody"><tr><td colspan="10" class="empty-state">請點擊查詢載入資料</td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Leave Approval -->
+    <div id="page-admin-leave" class="page">
+      <div class="section-title">請假審批管理</div>
+      <div class="summary-grid" style="margin-bottom: 20px;">
+        <div class="summary-card"><div class="val" id="leavePendingCount" style="color:#f59e0b">-</div><div class="lbl">待審批</div></div>
+        <div class="summary-card"><div class="val" id="leaveApprovedMonth" style="color:var(--success)">-</div><div class="lbl">本月核准天數</div></div>
+        <div class="summary-card"><div class="val" id="leaveReqMonth" style="color:var(--primary)">-</div><div class="lbl">本月申請件數</div></div>
+        <div class="summary-card"><div class="val" id="leaveTotal" style="color:#7c3aed">-</div><div class="lbl">累計申請</div></div>
+      </div>
+      <div class="card">
+        <div class="filter-bar">
+          <div class="form-group"><label>狀態</label>
+            <select id="adminLeaveStatusFilter">
+              <option value="">全部狀態</option>
+              <option value="pending">⏳ 待審批</option>
+              <option value="approved">✅ 已核准</option>
+              <option value="rejected">❌ 已拒絕</option>
+              <option value="cancelled">🚫 已取消</option>
+            </select>
+          </div>
+          <div class="form-group"><label>員工編號</label><input type="text" id="adminLeaveEmpFilter" placeholder="留空查全部"></div>
+          <div class="form-group"><label>開始日期</label><input type="date" id="adminLeaveStartDate"></div>
+          <div class="form-group"><label>結束日期</label><input type="date" id="adminLeaveEndDate"></div>
+          <button class="btn btn-primary btn-sm" onclick="loadAdminLeaves()">查詢</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>申請人</th><th>部門</th><th>假別</th><th>起訖日期</th><th>天數</th><th>原因</th><th>狀態</th><th>申請時間</th><th>審批</th></tr></thead>
+            <tbody id="adminLeaveTableBody"><tr><td colspan="9" class="empty-state">請點擊查詢載入資料</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin WiFi Settings -->
+    <div id="page-admin-wifi" class="page">
+      <div class="section-title">WiFi打卡設定</div>
+      <div class="card">
+        <div class="info-banner blue">
+          <span>ℹ️</span>
+          <span>設定允許打卡的IP位址清單。當員工打卡時，系統會檢查其公共IP是否在清單中。多個IP用逗號分隔，支援萬用字元（如 203.0.113.*）。</span>
+        </div>
+        <div class="info-banner" style="background:#fff7ed; color:#9a3412; border:1px solid #fed7aa;">
+          <span>👑</span>
+          <span>管理員不受此限制 — 隨時隨地（含手機、出差在外）都可查看員工出勤與打卡。</span>
+        </div>
+        <div id="currentIPDisplay" style="margin-bottom: 20px; padding: 16px; background: var(--bg); border-radius: 10px;">
+          <strong>您目前的公共IP位址：</strong><span id="adminCurrentIP" style="font-family: monospace; font-size: 16px; color: var(--primary);">載入中...</span>
+          <button class="btn btn-outline btn-sm" style="margin-left: 12px;" onclick="addCurrentIP()">加入白名單</button>
+        </div>
+        <div class="form-group">
+          <label>WiFi網路名稱</label>
+          <input type="text" id="wifiNameInput" placeholder="例如：公司辦公室WiFi" maxlength="50">
+        </div>
+        <div class="form-group">
+          <label>允許打卡的IP位址清單</label>
+          <input type="text" id="allowedIPsInput" placeholder="例如：203.0.113.45, 203.0.113.*">
+          <div class="hint-text">留空 = 允許所有IP（不限制）。多個IP用逗號分隔。</div>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label"><input type="checkbox" id="wifiEnabledInput"> 啟用WiFi打卡驗證</label>
+        </div>
+        <button class="btn btn-primary" onclick="saveWifiSettings()">儲存設定</button>
+      </div>
+    </div>
+
+    <!-- Admin System Settings -->
+    <div id="page-admin-settings" class="page">
+      <div class="section-title">系統設定</div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">工作排班設定</div></div>
+        <div class="info-banner blue">
+          <span>ℹ️</span>
+          <span>設定標準上下班時間，系統會自動判定遲到與早退。留空則不進行判定。</span>
+        </div>
+        <div class="schedule-row" style="margin-bottom: 20px;">
+          <div class="form-group"><label>標準上班時間</label><input type="time" id="scheduleStartTime" value="09:00"></div>
+          <div class="form-group"><label>標準下班時間</label><input type="time" id="scheduleEndTime" value="18:00"></div>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label"><input type="checkbox" id="scheduleEnabled" checked> 啟用遲到/早退判定</label>
+        </div>
+        <button class="btn btn-primary" onclick="saveScheduleSettings()">儲存排班設定</button>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">資料備份與還原</div></div>
+        <div class="info-banner blue">
+          <span>ℹ️</span>
+          <span>定期匯出資料作為備份。還原操作會覆蓋目前所有資料，請謹慎使用。</span>
+        </div>
+        <div class="action-btns" style="gap:12px;">
+          <button class="btn btn-outline btn-sm" onclick="exportFullData()" style="flex:1;">📥 匯出全部資料(JSON)</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('importFileInput').click()" style="flex:1;">📤 還原資料(JSON)</button>
+          <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="importFullData(event)">
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">☁️ 雲端同步（跨裝置）</div></div>
+        <div class="info-banner blue">
+          <span>ℹ️</span>
+          <span>把資料同步到免費雲端空間，<strong>所有紀錄不會遺失</strong>。啟用後<strong>每 30 秒自動同步</strong>、手機切回畫面立即同步，<strong>同步後系統裡所有項目（員工、考勤、統計、WiFi、排班）都會自動更新</strong>。換裝置步驟：① 在此頁點「複製連結」→ ② 在手機瀏覽器開啟該連結 → ③ 自動連接完成。</span>
+        </div>
+        <div id="syncStatusBox" style="padding:14px 16px;background:var(--bg);border-radius:10px;margin-bottom:16px;font-size:14px;">
+          <span id="syncStatusText">載入中...</span>
+        </div>
+        <div id="syncCodeSection" style="display:none;margin-bottom:16px;">
+          <div class="form-group">
+            <label>您的同步碼（在另一台裝置輸入即可同步同一份資料）</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="syncCodeDisplay" readonly style="flex:1;font-family:monospace;letter-spacing:1px;font-size:13px;">
+              <button class="btn btn-outline btn-sm" onclick="copySyncCode()">複製碼</button>
+              <button class="btn btn-outline btn-sm" onclick="copySyncLink()">複製連結</button>
+            </div>
+            <div class="hint-text">也可在另一台裝置的瀏覽器網址列直接貼上「複製連結」，開啟即自動連接同步。</div>
+          </div>
+          <div class="action-btns" style="gap:12px;margin-top:12px;">
+            <button class="btn btn-outline btn-sm" onclick="manualSync()" style="flex:1;">🔄 立即同步</button>
+            <button class="btn btn-outline btn-sm" onclick="deepSync()" style="flex:1;">📥 深度同步</button>
+            <button class="btn btn-outline btn-sm" onclick="testCloudConnection()" style="flex:1;">🧪 測試連線</button>
+            <button class="btn btn-outline btn-sm" onclick="resetSyncState()" style="flex:1;color:var(--warning);border:1.5px solid var(--warning);">🔧 重置狀態</button>
+            <button class="btn btn-outline btn-sm" onclick="disconnectSync()" style="flex:1;color:var(--danger);border:1.5px solid var(--danger);">斷開同步</button>
+          </div>
+        </div>
+        <div id="syncConnectSection">
+          <!-- v3.0: GitHub Token 設定 — 用於雲端同步推播 -->
+          <div class="form-group" id="tokenSection" style="background:#fef3c7;padding:12px;border-radius:8px;margin-bottom:12px;">
+            <label style="font-size:13px;color:#92400e;">🔑 GitHub Token（雲端同步所需，<strong>設定一次即永久記住</strong>，換裝置/瀏覽器才需重新輸入）</label>
+            <div style="display:flex;gap:8px;margin-top:6px;">
+              <input type="password" id="githubTokenInput" placeholder="ghp_... 或 gho_..." style="flex:1;font-family:monospace;font-size:13px;">
+              <button class="btn btn-outline btn-sm" id="tokenToggleBtn" onclick="toggleTokenVisibility()" title="顯示/隱藏 Token">👁</button>
+              <button class="btn btn-primary btn-sm" onclick="saveGitHubTokenUI()">儲存</button>
+              <button class="btn btn-outline btn-sm" onclick="clearGitHubTokenUI()" title="清除已儲存的 Token">🗑</button>
+            </div>
+            <div style="font-size:11px;color:#92400e;margin-top:4px;">
+              <span id="tokenStatus">尚未設定</span> ·
+              <a href="https://github.com/settings/tokens/new?scopes=repo&description=Attendance-Sync" target="_blank" style="color:#92400e;text-decoration:underline;">按此建立 Token</a>
+              · 設定後即可建立/連接同步
+            </div>
+          </div>
+          <div class="form-group">
+            <label>在另一台裝置使用此系統？輸入同步碼連接，或按「自動尋找」</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="syncCodeInput" placeholder="貼上同步碼" style="flex:1;font-family:monospace;" maxlength="64">
+              <button class="btn btn-primary" onclick="connectCloudSync()">連接</button>
+            </div>
+            <div style="margin-top:8px;">
+              <button class="btn btn-outline btn-sm" onclick="autoFindSyncCode(false)" id="autoFindBtn" style="width:100%;">🔗 自動尋找雲端同步碼並連接（免輸入）</button>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="createCloudSync()" style="margin-top:12px;">✨ 建立雲端同步（取得同步碼）</button>
+        </div>
+        <div class="hint-text" id="syncHint" style="margin-top:10px;">同步碼等同於資料庫鑰匙，請妥善保管，勿隨意分享。免費雲端空間有容量與每月請求次數限制，請定期使用「匯出全部資料」備份。</div>
+        <div id="syncLogSection" style="margin-top:16px;display:none;">
+          <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">📋 最近同步紀錄（調試用）</div>
+          <div id="syncLogBox" style="background:var(--bg);border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;font-size:12px;"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">系統資訊</div></div>
+        <table style="margin-bottom: 0;">
+          <tr><td style="width:200px;color:var(--text-secondary)">系統版本</td><td>v3.7 專業版 <span style="font-size:11px;color:var(--text-secondary);">(build 2026-08-16)</span></td></tr>
+          <tr><td style="color:var(--text-secondary)">資料儲存方式</td><td>瀏覽器 localStorage + ☁️ 雲端同步</td></tr>
+          <tr><td style="color:var(--text-secondary)">管理員權限</td><td>不受WiFi管制，隨時隨地使用</td></tr>
+          <tr><td style="color:var(--text-secondary)">IP偵測服務</td><td>ipify.org / httpbin.org</td></tr>
+          <tr><td style="color:var(--text-secondary)">Session 逾時</td><td>8 小時自動登出</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="mobile-nav" id="mobileNav">
+    <button class="active" data-page="clock">打卡</button>
+    <button data-page="history">記錄</button>
+    <button data-page="leave">請假</button>
+    <button class="admin-only" data-page="admin-stats" style="display:none">統計</button>
+    <button class="admin-only" data-page="admin-employees" style="display:none">員工</button>
+    <button class="admin-only" data-page="admin-attendance" style="display:none">考勤</button>
+    <button class="admin-only" data-page="admin-leave" style="display:none">假單</button>
+    <button class="admin-only" data-page="admin-wifi" style="display:none">WiFi</button>
+    <button class="admin-only" data-page="admin-settings" style="display:none">設定</button>
+  </div>
+</div>
+
+<!-- Add Employee Modal -->
+<div class="modal-overlay" id="addEmployeeModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">新增員工</div>
+      <button class="modal-close" onclick="closeModal('addEmployeeModal')">&times;</button>
+    </div>
+    <form id="addEmployeeForm">
+      <div class="form-group"><label>員工編號 *</label><input type="text" id="newEmployeeId" required placeholder="例如：EMP001" maxlength="20"></div>
+      <div class="form-group"><label>姓名 *</label><input type="text" id="newEmployeeName" required placeholder="員工姓名" maxlength="30"></div>
+      <div class="form-group"><label>密碼 *</label><input type="password" id="newEmployeePassword" required placeholder="初始密碼" maxlength="50"></div>
+      <div class="form-group"><label>部門</label><input type="text" id="newEmployeeDept" placeholder="例如：研發部" maxlength="30"></div>
+      <div class="form-group"><label>角色</label><select id="newEmployeeRole"><option value="employee">一般員工</option><option value="admin">管理員</option></select></div>
+      <button type="submit" class="btn btn-primary">建立帳號</button>
+    </form>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal-overlay" id="changePasswordModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">修改密碼</div>
+      <button class="modal-close" onclick="closeModal('changePasswordModal')">&times;</button>
+    </div>
+    <form id="changePasswordForm">
+      <div class="form-group"><label>目前密碼 *</label><input type="password" id="oldPassword" required placeholder="請輸入目前密碼" maxlength="50"></div>
+      <div class="form-group"><label>新密碼 *</label><input type="password" id="newPassword" required placeholder="請輸入新密碼" minlength="4" maxlength="50"></div>
+      <div class="form-group"><label>確認新密碼 *</label><input type="password" id="confirmPassword" required placeholder="再次輸入新密碼" maxlength="50"></div>
+      <button type="submit" class="btn btn-primary">確認修改</button>
+    </form>
+  </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal-overlay" id="resetPasswordModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">重設員工密碼</div>
+      <button class="modal-close" onclick="closeModal('resetPasswordModal')">&times;</button>
+    </div>
+    <form id="resetPasswordForm">
+      <div class="form-group"><label>員工</label><input type="text" id="resetEmpDisplay" disabled></div>
+      <div class="form-group"><label>新密碼 *</label><input type="password" id="resetNewPassword" required placeholder="請輸入新密碼" minlength="4" maxlength="50"></div>
+      <button type="submit" class="btn btn-primary">重設密碼</button>
+    </form>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-overlay" id="confirmDialog">
+  <div class="confirm-box">
+    <div class="icon" id="confirmIcon">⚠️</div>
+    <div class="msg" id="confirmMsg">確定要執行此操作嗎？</div>
+    <div class="btns">
+      <button class="btn btn-outline" onclick="closeConfirm()">取消</button>
+      <button class="btn btn-danger" id="confirmOkBtn">確定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ===== Data Layer (localStorage) =====
+const DB_KEY = 'attendance_system_db';
+const SESSION_KEY = 'attendance_session';
+const SESSION_TIMEOUT = 8 * 60 * 60 * 1000; // 8 hours
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+let db = loadDB();
+let currentUser = null;
+let currentIP = null;
+let loginAttempts = {};
+let confirmCallback = null;
+
+function loadDB() {
+  try {
+    const raw = localStorage.getItem(DB_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migration: ensure all required fields exist
+      if (!parsed.wifiSettings) parsed.wifiSettings = { allowed_ips: '', wifi_name: 'Office WiFi', enabled: false };
+      if (!parsed.schedule) parsed.schedule = { start_time: '09:00', end_time: '18:00', enabled: true };
+      if (!parsed.attendance) parsed.attendance = [];
+      if (!parsed.employees) parsed.employees = [];
+      // v3.5: leave_requests (請假申請)
+      if (!parsed.leave_requests) parsed.leave_requests = [];
+      // v3.7: deleted_employees (已刪除員工名單，防止雲端同步復活)
+      if (!parsed.deleted_employees) parsed.deleted_employees = [];
+      if (!parsed.nextEmpId) parsed.nextEmpId = parsed.employees.length + 1;
+      if (!parsed.nextAttId) parsed.nextAttId = parsed.attendance.length + 1;
+      // Migration: add updated_at for cloud sync merge correctness
+      const nowISO = new Date().toISOString();
+      (parsed.employees || []).forEach(function(e) { if (!e.updated_at) e.updated_at = nowISO; });
+      (parsed.attendance || []).forEach(function(a) { if (!a.updated_at) a.updated_at = nowISO; });
+      (parsed.leave_requests || []).forEach(function(l) { if (!l.updated_at) l.updated_at = nowISO; });
+      return parsed;
+    }
+  } catch(e) {}
+  const now = new Date().toLocaleString('zh-TW');
+  const defaultDB = {
+    employees: [{
+      id: 1, employee_id: 'admin', name: 'System Admin',
+      password: 'admin123', department: 'Management',
+      role: 'admin', created_at: now, active: 1
+    }],
+    attendance: [],
+    leave_requests: [],
+    deleted_employees: [],
+    wifiSettings: { allowed_ips: '', wifi_name: 'Office WiFi', enabled: false },
+    schedule: { start_time: '09:00', end_time: '18:00', enabled: true },
+    nextEmpId: 2, nextAttId: 1
+  };
+  localStorage.setItem(DB_KEY, JSON.stringify(defaultDB));
+  return defaultDB;
+}
+
+let syncTimer = null;
+let syncPending = false;      // true = 本機有尚未上傳雲端的變更
+let syncRetryTimer = null;    // 推播失敗的自動重試計時器
+function saveDB() {
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  syncPending = true;
+  // Cloud sync: debounce so rapid changes (e.g. clock ticks) don't spam the API
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(function() { if (getSyncKey()) pushToCloud(true); }, 2000);
+}
+
+// ===== HTML Escape (prevent XSS) =====
+function esc(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function trim(v) {
+  return v ? String(v).trim() : '';
+}
+
+// ===== Authorization Guard =====
+function requireAdmin() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('權限不足！此功能僅限管理員使用。', 'error');
+    return false;
+  }
+  return true;
+}
+
+function requireLogin() {
+  if (!currentUser) {
+    showToast('請先登入', 'error');
+    return false;
+  }
+  return true;
+}
+
+// ===== IP Detection =====
+async function detectIP() {
+  try {
+    const res = await fetch('https://api.ipify.org?format=json');
+    const data = await res.json();
+    return data.ip;
+  } catch(e) {
+    try {
+      const res2 = await fetch('https://httpbin.org/ip');
+      const data2 = await res2.json();
+      return data2.origin;
+    } catch(e2) {
+      return 'unknown';
+    }
+  }
+}
+
+function isIPAllowed(ip, allowedIPsStr) {
+  if (!allowedIPsStr || allowedIPsStr.trim() === '') return true;
+  if (!ip || ip === 'unknown') return false;
+  const allowed = allowedIPsStr.split(',').map(s => s.trim()).filter(s => s);
+  return allowed.some(a => {
+    if (a === ip) return true;
+    if (a.includes('*')) {
+      const pattern = a.replace(/\./g, '\\.').replace(/\*/g, '.*');
+      return new RegExp('^' + pattern + '$').test(ip);
+    }
+    return false;
+  });
+}
+
+// ===== Late / Early Calculation =====
+function calcAttendanceStatus(clockIn, clockOut) {
+  const schedule = db.schedule;
+  if (!schedule || !schedule.enabled || !clockIn) return 'normal';
+  let status = 'normal';
+  if (schedule.start_time && clockIn > schedule.start_time) status = 'late';
+  if (clockOut && schedule.end_time && clockOut < schedule.end_time) {
+    status = status === 'late' ? 'late_early' : 'early';
+  }
+  return status;
+}
+
+// v3.4：計算工作時數（下班 - 上班），回傳 { text, hours } 或 null（未打完整卡）
+function calcWorkHours(record) {
+  if (!record || !record.clock_in || !record.clock_out || !record.date) return null;
+  const inT = new Date(record.date + 'T' + record.clock_in);
+  const outT = new Date(record.date + 'T' + record.clock_out);
+  let diffMs = outT - inT;
+  if (isNaN(diffMs) || diffMs < 0) return null; // 時間異常（含跨日負值）
+  const totalMin = Math.round(diffMs / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  let text;
+  if (h === 0) text = m + '分';
+  else if (m === 0) text = h + '小時';
+  else text = h + '小時' + m + '分';
+  return { text: text, hours: totalMin / 60, minutes: totalMin };
+}
+
+// ===== Leave Management (v3.5) =====
+const LEAVE_TYPES = {
+  annual: '特休',
+  personal: '事假',
+  sick: '病假',
+  marriage: '婚假',
+  bereavement: '喪假',
+  parental: '產假/陪產假',
+  menstrual: '生理假',
+  other: '其他'
+};
+
+function leaveTypeText(t) { return LEAVE_TYPES[t] || (t ? String(t) : '--'); }
+
+// 計算請假天數（含首尾日），日期不合法或結束早於開始回傳 0
+function calcLeaveDays(startDate, endDate) {
+  if (!startDate || !endDate) return 0;
+  const s = new Date(startDate + 'T00:00:00');
+  const e = new Date(endDate + 'T00:00:00');
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+  return Math.round((e - s) / 86400000) + 1;
+}
+
+function leaveStatusBadge(status) {
+  const map = {
+    'pending': '<span class="badge badge-warning">⏳ 待審批</span>',
+    'approved': '<span class="badge badge-success">✅ 已核准</span>',
+    'rejected': '<span class="badge badge-danger">❌ 已拒絕</span>',
+    'cancelled': '<span class="badge" style="background:#e5e7eb;color:#6b7280">🚫 已取消</span>'
+  };
+  return map[status] || esc(status);
+}
+
+// v3.6: 將已核准假單展開為逐日紀錄（供考勤表格 / 我的紀錄 / CSV 匯出共用）
+// 回傳 [{date, leave_type, leave_id, employee_id, employee_name, department}]
+function getApprovedLeaveDays(employeeId, startDate, endDate) {
+  var result = [];
+  var approved = (db.leave_requests || []).filter(function(l) { return l.status === 'approved'; });
+  if (employeeId) approved = approved.filter(function(l) { return l.employee_id === employeeId; });
+  approved.forEach(function(l) {
+    if (!l.start_date || !l.end_date) return;
+    var sp = l.start_date.split('-');
+    var ep = l.end_date.split('-');
+    var cur = new Date(parseInt(sp[0]), parseInt(sp[1]) - 1, parseInt(sp[2]));
+    var endD = new Date(parseInt(ep[0]), parseInt(ep[1]) - 1, parseInt(ep[2]));
+    while (cur <= endD) {
+      var ds = cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0') + '-' + String(cur.getDate()).padStart(2, '0');
+      if (startDate && ds < startDate) { cur.setDate(cur.getDate() + 1); continue; }
+      if (endDate && ds > endDate) break;
+      result.push({ date: ds, leave_type: l.leave_type || l.type, leave_id: l.id, employee_id: l.employee_id, employee_name: l.employee_name || '', department: l.department || '' });
+      cur.setDate(cur.getDate() + 1);
+    }
+  });
+  return result;
+}
+
+// 請假日期 badge（用於考勤表格顯示）
+function leaveDayBadge(type) {
+  return '<span class="badge" style="background:#dbeafe;color:#1d4ed8">' + esc(leaveTypeText(type)) + '</span>';
+}
+
+// 天數預覽（申請表單）
+function updateLeaveDaysPreview() {
+  const el = document.getElementById('leaveDaysPreview');
+  if (!el) return;
+  const s = document.getElementById('leaveStartDate').value;
+  const e = document.getElementById('leaveEndDate').value;
+  if (!s || !e) { el.textContent = '--'; el.classList.remove('invalid'); return; }
+  const days = calcLeaveDays(s, e);
+  if (days <= 0) { el.textContent = '日期有誤（結束須 ≥ 開始）'; el.classList.add('invalid'); }
+  else { el.textContent = days + ' 天'; el.classList.remove('invalid'); }
+}
+
+// 員工：送出請假申請
+function submitLeaveRequest() {
+  if (!requireLogin()) return;
+  const type = document.getElementById('leaveTypeSelect').value;
+  const startDate = document.getElementById('leaveStartDate').value;
+  const endDate = document.getElementById('leaveEndDate').value;
+  const reason = trim(document.getElementById('leaveReasonInput').value);
+  if (!type) { showToast('請選擇假別', 'warning'); return; }
+  if (!startDate || !endDate) { showToast('請選擇請假起訖日期', 'warning'); return; }
+  const days = calcLeaveDays(startDate, endDate);
+  if (days <= 0) { showToast('結束日期不能早於開始日期', 'error'); return; }
+  if (days > 60) { showToast('單次請假最多 60 天', 'error'); return; }
+  if (!reason) { showToast('請填寫請假原因', 'warning'); return; }
+
+  const nowISO = new Date().toISOString();
+  const request = {
+    id: 'L' + Date.now() + '-' + Math.floor(Math.random() * 100000), // 全域唯一，避免多裝置合併衝突
+    employee_id: currentUser.employeeId,
+    employee_name: currentUser.name,
+    department: currentUser.department || '',
+    leave_type: type,
+    start_date: startDate,
+    end_date: endDate,
+    days: days,
+    reason: reason,
+    status: 'pending',
+    created_at: nowISO,
+    reviewed_at: null,
+    reviewed_by: null,
+    review_note: '',
+    updated_at: nowISO
+  };
+  db.leave_requests.push(request);
+  saveDB();
+  // 清空表單
+  document.getElementById('leaveStartDate').value = '';
+  document.getElementById('leaveEndDate').value = '';
+  document.getElementById('leaveReasonInput').value = '';
+  updateLeaveDaysPreview();
+  showToast('請假申請已送出，待管理員審批', 'success');
+  loadMyLeaves();
+}
+
+// 員工：取消自己的待審批申請
+function cancelLeaveRequest(id) {
+  if (!requireLogin()) return;
+  const req = (db.leave_requests || []).find(function(l) { return l.id === id; });
+  if (!req) { showToast('找不到該申請', 'error'); return; }
+  if (req.employee_id !== currentUser.employeeId) { showToast('只能取消自己的申請', 'error'); return; }
+  if (req.status !== 'pending') { showToast('僅待審批的申請可以取消', 'warning'); return; }
+  showConfirm('確定要取消這筆請假申請嗎？（' + leaveTypeText(req.leave_type) + ' ' + req.start_date + ' ~ ' + req.end_date + '）', function() {
+    req.status = 'cancelled';
+    req.updated_at = new Date().toISOString();
+    saveDB();
+    showToast('已取消申請', 'success');
+    loadMyLeaves();
+    if (currentUser.role === 'admin') loadAdminLeaves();
+  }, '🚫');
+}
+
+// 員工：我的請假記錄
+function loadMyLeaves() {
+  if (!requireLogin()) return;
+  const tbody = document.getElementById('myLeaveTableBody');
+  if (!tbody) return;
+  let list = (db.leave_requests || []).filter(function(l) { return l.employee_id === currentUser.employeeId; });
+  list.sort(function(a, b) {
+    const d = b.start_date.localeCompare(a.start_date);
+    if (d !== 0) return d;
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  });
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><div class="icon">📭</div>尚無請假記錄</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function(l) {
+    const canCancel = l.status === 'pending';
+    return '<tr>' +
+      '<td>' + esc((l.created_at || '').substring(0, 10)) + '</td>' +
+      '<td><strong>' + esc(leaveTypeText(l.leave_type)) + '</strong></td>' +
+      '<td>' + esc(l.start_date) + ' ~ ' + esc(l.end_date) + '</td>' +
+      '<td style="font-weight:600;color:var(--primary)">' + l.days + ' 天</td>' +
+      '<td class="review-note-cell">' + esc(l.reason) + '</td>' +
+      '<td>' + leaveStatusBadge(l.status) + '</td>' +
+      '<td>' + (canCancel
+        ? '<button class="btn-cancel-leave" onclick="cancelLeaveRequest(\'' + l.id + '\')">取消申請</button>'
+        : (l.status === 'rejected' && l.review_note ? '<span class="review-note-cell">' + esc(l.review_note) + '</span>' : '<span style="color:#999">--</span>')) +
+      '</td></tr>';
+  }).join('');
+}
+
+// 管理員：請假審批列表（含統計）
+function loadAdminLeaves() {
+  if (!requireAdmin()) return;
+  const statusFilter = document.getElementById('adminLeaveStatusFilter').value;
+  const empFilter = trim(document.getElementById('adminLeaveEmpFilter').value);
+  const startDate = document.getElementById('adminLeaveStartDate').value;
+  const endDate = document.getElementById('adminLeaveEndDate').value;
+  let list = (db.leave_requests || []).slice();
+  if (statusFilter) list = list.filter(function(l) { return l.status === statusFilter; });
+  if (empFilter) list = list.filter(function(l) { return l.employee_id.indexOf(empFilter) >= 0 || (l.employee_name || '').indexOf(empFilter) >= 0; });
+  if (startDate) list = list.filter(function(l) { return l.start_date >= startDate; });
+  if (endDate) list = list.filter(function(l) { return l.start_date <= endDate; });
+  // 排序：待審批優先，其餘依申請時間新到舊
+  const stRank = { pending: 0, approved: 1, rejected: 2, cancelled: 3 };
+  list.sort(function(a, b) {
+    const r = (stRank[a.status] || 9) - (stRank[b.status] || 9);
+    if (r !== 0) return r;
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  });
+
+  // 統計
+  const now = new Date();
+  const monthPrefix = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  let pendingCount = 0, approvedMonthDays = 0, reqMonthCount = 0;
+  (db.leave_requests || []).forEach(function(l) {
+    if (l.status === 'pending') pendingCount++;
+    if (l.status === 'approved' && (l.created_at || '').indexOf(monthPrefix) === 0) approvedMonthDays += (l.days || 0);
+    if ((l.created_at || '').indexOf(monthPrefix) === 0) reqMonthCount++;
+  });
+  document.getElementById('leavePendingCount').textContent = pendingCount;
+  document.getElementById('leaveApprovedMonth').textContent = approvedMonthDays + '天';
+  document.getElementById('leaveReqMonth').textContent = reqMonthCount + '件';
+  document.getElementById('leaveTotal').textContent = (db.leave_requests || []).length + '件';
+
+  const tbody = document.getElementById('adminLeaveTableBody');
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><div class="icon">📭</div>無符合條件的請假記錄</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function(l) {
+    let ops = '<span style="color:#999">--</span>';
+    if (l.status === 'pending') {
+      ops = '<div class="action-btns">' +
+        '<button class="btn-approve" onclick="approveLeave(\'' + l.id + '\')">✓ 核准</button>' +
+        '<button class="btn-reject" onclick="rejectLeave(\'' + l.id + '\')">✗ 拒絕</button>' +
+        '</div>';
+    } else if (l.status === 'approved') {
+      ops = '<span style="color:#16a34a;font-size:12px">已核准' + (l.reviewed_by ? ' · ' + esc(l.reviewed_by) : '') + '</span>' +
+        (l.review_note ? '<div class="review-note-cell">' + esc(l.review_note) + '</div>' : '');
+    } else if (l.status === 'rejected') {
+      ops = '<span style="color:#dc2626;font-size:12px">已拒絕' + (l.reviewed_by ? ' · ' + esc(l.reviewed_by) : '') + '</span>' +
+        (l.review_note ? '<div class="review-note-cell">' + esc(l.review_note) + '</div>' : '');
+    } else {
+      ops = '<span style="color:#9ca3af;font-size:12px">已取消</span>';
+    }
+    return '<tr>' +
+      '<td><strong>' + esc(l.employee_name || l.employee_id) + '</strong><br><span style="color:#999;font-size:12px">' + esc(l.employee_id) + '</span></td>' +
+      '<td>' + esc(l.department || '--') + '</td>' +
+      '<td><strong>' + esc(leaveTypeText(l.leave_type)) + '</strong></td>' +
+      '<td>' + esc(l.start_date) + ' ~ ' + esc(l.end_date) + '</td>' +
+      '<td style="font-weight:600;color:var(--primary)">' + l.days + ' 天</td>' +
+      '<td class="review-note-cell">' + esc(l.reason) + '</td>' +
+      '<td>' + leaveStatusBadge(l.status) + '</td>' +
+      '<td style="font-size:12px;color:#999">' + esc((l.created_at || '').replace('T', ' ').substring(0, 16)) + '</td>' +
+      '<td>' + ops + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// 管理員：核准申請（可輸入備註）
+function approveLeave(id) {
+  if (!requireAdmin()) return;
+  const req = (db.leave_requests || []).find(function(l) { return l.id === id; });
+  if (!req) { showToast('找不到該申請', 'error'); return; }
+  if (req.status !== 'pending') { showToast('該申請已處理', 'warning'); return; }
+  const note = prompt('核准備註（可留空）：', '');
+  if (note === null) return; // 取消
+  req.status = 'approved';
+  req.reviewed_at = new Date().toISOString();
+  req.reviewed_by = currentUser.employeeId;
+  req.review_note = note || '';
+  req.updated_at = new Date().toISOString();
+  saveDB();
+  showToast('已核准 ' + (req.employee_name || req.employee_id) + ' 的請假申請', 'success');
+  loadAdminLeaves();
+}
+
+// 管理員：拒絕申請（須填原因）
+function rejectLeave(id) {
+  if (!requireAdmin()) return;
+  const req = (db.leave_requests || []).find(function(l) { return l.id === id; });
+  if (!req) { showToast('找不到該申請', 'error'); return; }
+  if (req.status !== 'pending') { showToast('該申請已處理', 'warning'); return; }
+  const note = prompt('請填寫拒絕原因（員工會看到）：', '');
+  if (note === null) return; // 取消
+  if (!trim(note)) { showToast('拒絕時必須填寫原因', 'error'); return; }
+  req.status = 'rejected';
+  req.reviewed_at = new Date().toISOString();
+  req.reviewed_by = currentUser.employeeId;
+  req.review_note = trim(note);
+  req.updated_at = new Date().toISOString();
+  saveDB();
+  showToast('已拒絕 ' + (req.employee_name || req.employee_id) + ' 的請假申請', 'success');
+  loadAdminLeaves();
+}
+
+function statusBadge(status) {
+  const map = {
+    'present': '<span class="badge badge-success">正常</span>',
+    'normal': '<span class="badge badge-success">正常</span>',
+    'late': '<span class="badge badge-warning">遲到</span>',
+    'early': '<span class="badge badge-warning">早退</span>',
+    'late_early': '<span class="badge badge-danger">遲到+早退</span>',
+    'absent': '<span class="badge badge-danger">缺席</span>'
+  };
+  return map[status] || esc(status);
+}
+
+// ===== Toast (max 3) =====
+function showToast(msg, type) {
+  type = type || 'info';
+  const c = document.getElementById('toastContainer');
+  while (c.children.length >= 3) c.removeChild(c.firstChild);
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(function() {
+    t.style.opacity = '0';
+    t.style.transform = 'translateX(100%)';
+    t.style.transition = 'all 0.3s';
+    setTimeout(function() { if (t.parentNode) t.remove(); }, 300);
+  }, 4000);
+}
+
+// ===== Confirm Dialog =====
+function showConfirm(msg, callback, icon) {
+  document.getElementById('confirmIcon').textContent = icon || '⚠️';
+  document.getElementById('confirmMsg').textContent = msg;
+  confirmCallback = callback;
+  document.getElementById('confirmDialog').classList.add('active');
+}
+
+function closeConfirm() {
+  confirmCallback = null;
+  document.getElementById('confirmDialog').classList.remove('active');
+}
+
+document.getElementById('confirmOkBtn').addEventListener('click', function() {
+  if (confirmCallback) confirmCallback();
+  closeConfirm();
+});
+
+// ===== Session Management =====
+function saveSession() {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    employeeId: currentUser.employeeId,
+    timestamp: Date.now()
+  }));
+}
+
+function checkSession() {
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const session = JSON.parse(raw);
+    if (Date.now() - session.timestamp > SESSION_TIMEOUT) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch(e) {
+    return null;
+  }
+}
+
+// ===== Auth =====
+document.getElementById('loginForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const empId = trim(document.getElementById('loginEmployeeId').value);
+  const pwd = document.getElementById('loginPassword').value;
+
+  // Rate limiting
+  const now = Date.now();
+  if (loginAttempts[empId] && loginAttempts[empId].lockedUntil > now) {
+    const remaining = Math.ceil((loginAttempts[empId].lockedUntil - now) / 1000 / 60);
+    showToast('帳號已鎖定，請 ' + remaining + ' 分鐘後再試', 'error');
+    return;
+  }
+
+  const user = db.employees.find(function(u) {
+    return u.employee_id === empId && u.password === pwd && u.active === 1;
+  });
+
+  if (!user) {
+    // Record failed attempt
+    if (!loginAttempts[empId]) loginAttempts[empId] = { count: 0, lockedUntil: 0 };
+    loginAttempts[empId].count++;
+    if (loginAttempts[empId].count >= LOGIN_MAX_ATTEMPTS) {
+      loginAttempts[empId].lockedUntil = now + LOGIN_LOCKOUT_MS;
+      loginAttempts[empId].count = 0;
+      showToast('登入失敗超過 ' + LOGIN_MAX_ATTEMPTS + ' 次，帳號已鎖定 5 分鐘', 'error');
+    } else {
+      const remaining = LOGIN_MAX_ATTEMPTS - loginAttempts[empId].count;
+      showToast('帳號或密碼錯誤，剩餘 ' + remaining + ' 次嘗試機會', 'error');
+    }
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginPassword').focus();
+    return;
+  }
+
+  // Reset attempts on success
+  delete loginAttempts[empId];
+  currentUser = { id: user.id, employeeId: user.employee_id, name: user.name, role: user.role, department: user.department };
+  saveSession();
+  showDashboard();
+  showToast('登入成功！歡迎，' + currentUser.name, 'success');
+});
+
+function logout() {
+  currentUser = null;
+  localStorage.removeItem(SESSION_KEY);
+  document.querySelectorAll('.admin-only').forEach(function(el) { el.style.display = 'none'; });
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('page-clock').classList.add('active');
+  document.querySelectorAll('[data-page]').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('[data-page="clock"]').forEach(function(t) { t.classList.add('active'); });
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('dashboard').classList.remove('active');
+  // Clear login form
+  document.getElementById('loginEmployeeId').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+function showDashboard() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('dashboard').classList.add('active');
+  document.getElementById('userName').textContent = currentUser.name;
+  document.getElementById('userRole').textContent = currentUser.role === 'admin' ? '管理員' : '員工';
+  document.getElementById('userAvatar').textContent = currentUser.name.charAt(0).toUpperCase();
+
+  if (currentUser.role === 'admin') {
+    document.querySelectorAll('.admin-only').forEach(function(el) { el.style.display = ''; });
+  } else {
+    document.querySelectorAll('.admin-only').forEach(function(el) { el.style.display = 'none'; });
+  }
+
+  // Set default date filters to current month
+  setDefaultDateFilters();
+
+  switchPage('clock');
+  startClock();
+  // v2.7：登入後立刻檢查同步狀態，更新徽章與警告橫幅
+  if (getSyncKey()) { updateSyncBadge('synced'); checkSyncWarning(); }
+  else { updateSyncBadge('offline'); checkSyncWarning(); }
+}
+
+function setDefaultDateFilters() {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA');
+  // v3.6.1: 預設結束日期延長到「下個月月底」，讓已核准的未來請假日（含跨月）也會顯示
+  const endNext = new Date(now.getFullYear(), now.getMonth() + 2, 0).toLocaleDateString('en-CA');
+  const setVal = function(id, val) { const el = document.getElementById(id); if (el && !el.value) el.value = val; };
+  setVal('historyStartDate', firstDay);
+  setVal('historyEndDate', endNext);
+  setVal('adminAttStartDate', firstDay);
+  setVal('adminAttEndDate', endNext);
+}
+
+// ===== Clock =====
+let clockIntervalId = null;
+
+function startClock() {
+  if (clockIntervalId) clearInterval(clockIntervalId);
+  function update() {
+    const now = new Date();
+    const clockTimeEl = document.getElementById('clockTime');
+    const clockDateEl = document.getElementById('clockDate');
+    if (clockTimeEl) clockTimeEl.textContent = now.toLocaleTimeString('zh-TW', { hour12: false });
+    if (clockDateEl) clockDateEl.textContent = now.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+    if (!currentUser) return;
+    const today = now.toLocaleDateString('en-CA');
+    const record = db.attendance.find(function(a) { return a.employee_id === currentUser.employeeId && a.date === today; });
+    if (record && record.clock_in && !record.clock_out) {
+      const workHoursEl = document.getElementById('workHours');
+      if (workHoursEl) {
+        const inTime = new Date(record.date + 'T' + record.clock_in);
+        const hours = ((now - inTime) / 3600000).toFixed(1);
+        workHoursEl.textContent = hours + 'h';
+      }
+    }
+  }
+  update();
+  clockIntervalId = setInterval(update, 1000);
+}
+
+async function loadClockStatus() {
+  if (!currentUser) return;
+  const today = new Date().toLocaleDateString('en-CA');
+  const record = db.attendance.find(function(a) { return a.employee_id === currentUser.employeeId && a.date === today; });
+  const wifiEl = document.getElementById('wifiStatus');
+  const isAdmin = currentUser.role === 'admin';
+
+  if (!currentIP || currentIP === 'unknown') {
+    wifiEl.className = 'wifi-status checking';
+    wifiEl.innerHTML = '<span>🔄 正在偵測網路環境...</span>';
+    currentIP = await detectIP();
+  }
+
+  if (isAdmin) {
+    // Admin is EXEMPT from WiFi/IP restrictions — can clock in/out & manage from anywhere
+    wifiEl.className = 'wifi-status verified';
+    wifiEl.innerHTML = '<span>👑 管理員模式：不受WiFi管制，可隨時隨地使用 · IP: ' + esc(currentIP) + '</span>';
+  } else {
+    const wifi = db.wifiSettings;
+    const wifiVerified = wifi.enabled ? isIPAllowed(currentIP, wifi.allowed_ips) : true;
+
+    if (!wifi.enabled) {
+      wifiEl.className = 'wifi-status disabled';
+      wifiEl.innerHTML = '<span>⚠️ WiFi驗證已停用（任何網路均可打卡）</span>';
+    } else if (wifiVerified) {
+      wifiEl.className = 'wifi-status verified';
+      wifiEl.innerHTML = '<span>✅ 已連線：' + esc(wifi.wifi_name || 'Office WiFi') + ' · IP: ' + esc(currentIP) + '</span>';
+    } else {
+      wifiEl.className = 'wifi-status unverified';
+      wifiEl.innerHTML = '<span>❌ 未連接公司網路 · 您的IP: ' + esc(currentIP) + '</span>';
+    }
+  }
+
+  const clockInEl = document.getElementById('clockInTime');
+  const clockOutEl = document.getElementById('clockOutTime');
+  const workHoursEl = document.getElementById('workHours');
+
+  if (record && record.clock_in) {
+    clockInEl.textContent = record.clock_in;
+    clockInEl.className = 'status-value success';
+  } else {
+    clockInEl.textContent = '--:--';
+    clockInEl.className = 'status-value pending';
+  }
+
+  if (record && record.clock_out) {
+    clockOutEl.textContent = record.clock_out;
+    clockOutEl.className = 'status-value success';
+    const inTime = new Date(record.date + 'T' + record.clock_in);
+    const outTime = new Date(record.date + 'T' + record.clock_out);
+    workHoursEl.textContent = ((outTime - inTime) / 3600000).toFixed(1) + 'h';
+    workHoursEl.className = 'status-value success';
+  } else if (record && record.clock_in) {
+    clockOutEl.textContent = '--:--';
+    clockOutEl.className = 'status-value pending';
+    const inTime = new Date(record.date + 'T' + record.clock_in);
+    const hours = ((new Date() - inTime) / 3600000).toFixed(1);
+    workHoursEl.textContent = hours + 'h';
+    workHoursEl.className = 'status-value pending';
+  } else {
+    clockOutEl.textContent = '--:--';
+    clockOutEl.className = 'status-value pending';
+    workHoursEl.textContent = '--';
+    workHoursEl.className = 'status-value pending';
+  }
+
+  document.getElementById('clockInBtn').disabled = !!(record && record.clock_in);
+  document.getElementById('clockOutBtn').disabled = !!(record && record.clock_out) || !(record && record.clock_in);
+}
+
+function clockIn() {
+  if (!requireLogin()) return;
+  const today = new Date().toLocaleDateString('en-CA');
+  const now = new Date().toLocaleTimeString('en-GB');
+  const wifi = db.wifiSettings;
+  const isAdmin = currentUser.role === 'admin';
+  // Admin is EXEMPT from WiFi verification — can clock in from anywhere
+  const wifiVerified = isAdmin ? true : (wifi.enabled ? isIPAllowed(currentIP, wifi.allowed_ips) : true);
+
+  if (!isAdmin && wifi.enabled && !wifiVerified) {
+    showToast('WiFi驗證失敗！您必須在公司網路內才能打卡。您的IP: ' + currentIP, 'error');
+    return;
+  }
+
+  let record = db.attendance.find(function(a) { return a.employee_id === currentUser.employeeId && a.date === today; });
+  if (record && record.clock_in) {
+    showToast('今日已打卡上班', 'warning');
+    return;
+  }
+
+  const status = calcAttendanceStatus(now, null);
+  const nowISO = new Date().toISOString();
+  if (record) {
+    record.clock_in = now;
+    record.clock_in_ip = currentIP;
+    record.ip_address = record.ip_address || currentIP;
+    record.wifi_verified = wifiVerified ? 1 : 0;
+    record.status = status;
+    record.updated_at = nowISO;
+  } else {
+    db.attendance.push({
+      id: db.nextAttId++, employee_id: currentUser.employeeId,
+      clock_in: now, clock_out: null, date: today,
+      ip_address: currentIP, clock_in_ip: currentIP, clock_out_ip: null,
+      wifi_verified: wifiVerified ? 1 : 0,
+      status: status, created_at: new Date().toLocaleString('zh-TW'),
+      updated_at: nowISO
+    });
+  }
+  saveDB();
+  const lateMsg = status === 'late' ? '（遲到）' : '';
+  const adminMsg = isAdmin ? '（管理員不受WiFi管制）' : '';
+  showToast('上班打卡成功！時間：' + now + lateMsg + adminMsg, 'success');
+  loadClockStatus();
+}
+
+function clockOut() {
+  if (!requireLogin()) return;
+  const today = new Date().toLocaleDateString('en-CA');
+  const now = new Date().toLocaleTimeString('en-GB');
+  const wifi = db.wifiSettings;
+  const isAdmin = currentUser.role === 'admin';
+
+  // Re-verify WiFi on clock out — admin exempt
+  const wifiVerified = isAdmin ? true : (wifi.enabled ? isIPAllowed(currentIP, wifi.allowed_ips) : true);
+  if (!isAdmin && wifi.enabled && !wifiVerified) {
+    showToast('WiFi驗證失敗！您必須在公司網路內才能打卡。您的IP: ' + currentIP, 'error');
+    return;
+  }
+
+  const record = db.attendance.find(function(a) { return a.employee_id === currentUser.employeeId && a.date === today; });
+  if (!record || !record.clock_in) {
+    showToast('您今日尚未打卡上班', 'error');
+    return;
+  }
+  if (record.clock_out) {
+    showToast('今日已打卡下班', 'warning');
+    return;
+  }
+
+  record.clock_out = now;
+  record.clock_out_ip = currentIP;
+  record.updated_at = new Date().toISOString();
+  // Re-calculate status with both clock_in and clock_out
+  record.status = calcAttendanceStatus(record.clock_in, now);
+  saveDB();
+
+  const inTime = new Date(record.date + 'T' + record.clock_in);
+  const outTime = new Date(record.date + 'T' + now);
+  const hours = ((outTime - inTime) / 3600000).toFixed(1);
+  let extraMsg = '';
+  if (record.status === 'early') extraMsg = '（早退）';
+  else if (record.status === 'late_early') extraMsg = '（遲到+早退）';
+  showToast('下班打卡成功！工作時數：' + hours + ' 小時' + extraMsg, 'success');
+  loadClockStatus();
+}
+
+// ===== History =====
+function loadHistory() {
+  if (!requireLogin()) return;
+  const startDate = document.getElementById('historyStartDate').value;
+  const endDate = document.getElementById('historyEndDate').value;
+  let records = db.attendance.filter(function(a) { return a.employee_id === currentUser.employeeId; });
+  if (startDate) records = records.filter(function(a) { return a.date >= startDate; });
+  if (endDate) records = records.filter(function(a) { return a.date <= endDate; });
+
+  // v3.6: 合併已核准請假（逐日展開）
+  var leaveDays = getApprovedLeaveDays(currentUser.employeeId, startDate || null, endDate || null);
+  var leaveMap = {};
+  leaveDays.forEach(function(ld) { leaveMap[ld.date] = ld; });
+  var attDates = {};
+  records.forEach(function(r) {
+    attDates[r.date] = true;
+    if (leaveMap[r.date]) r._leaveType = leaveMap[r.date].leave_type;
+  });
+  var leaveCount = 0;
+  leaveDays.forEach(function(ld) {
+    if (!attDates[ld.date]) {
+      records.push({
+        date: ld.date, clock_in: null, clock_out: null, status: 'leave',
+        _isLeave: true, _leaveType: ld.leave_type
+      });
+      leaveCount++;
+    } else {
+      leaveCount++;
+    }
+  });
+
+  records.sort(function(a, b) { return b.date.localeCompare(a.date); });
+  records = records.slice(0, 90);
+
+  // Summary stats（請假不計工作時數，但計入總天數）
+  let totalDays = records.length;
+  let totalMinutes = 0;
+  let lateCount = 0;
+  let workDays = 0;
+  records.forEach(function(r) {
+    if (r._isLeave) return;
+    workDays++;
+    const wh = calcWorkHours(r);
+    if (wh) totalMinutes += wh.minutes;
+    if (r.status === 'late' || r.status === 'late_early') lateCount++;
+  });
+  const totalHours = (totalMinutes / 60).toFixed(1);
+  const avgHours = workDays > 0 ? (totalMinutes / 60 / workDays).toFixed(1) : '0';
+
+  document.getElementById('sumTotalDays').textContent = totalDays;
+  document.getElementById('sumTotalHours').textContent = totalHours + 'h';
+  document.getElementById('sumAvgHours').textContent = avgHours + 'h';
+  document.getElementById('sumLateCount').textContent = lateCount;
+  var sumLeaveEl = document.getElementById('sumLeaveDays');
+  if (sumLeaveEl) sumLeaveEl.textContent = leaveCount;
+
+  const tbody = document.getElementById('historyTableBody');
+  if (records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><div class="icon">📭</div>暫無考勤記錄</td></tr>';
+    return;
+  }
+  tbody.innerHTML = records.map(function(r) {
+    if (r._isLeave) {
+      return '<tr style="background:#f0f7ff">' +
+        '<td>' + esc(r.date) + '</td>' +
+        '<td>' + leaveDayBadge(r._leaveType) + '</td>' +
+        '<td><span style="color:#999">--</span></td>' +
+        '<td><span style="color:#999">休假</span></td>' +
+        '<td><span style="color:#999">--</span></td>' +
+        '<td><span style="color:#999">--</span></td>' +
+        '<td>' + leaveDayBadge(r._leaveType) + '</td>' +
+        '</tr>';
+    }
+    const wh = calcWorkHours(r);
+    let hours = '--';
+    if (wh) hours = wh.text;
+    else if (r.clock_in) hours = '<span style="color:#999">工作中</span>';
+    var statusCell = statusBadge(r.status);
+    if (r._leaveType) statusCell += '<br><span style="font-size:11px">' + leaveDayBadge(r._leaveType) + '</span>';
+    return '<tr>' +
+      '<td>' + esc(r.date) + '</td>' +
+      '<td>' + (r.clock_in ? esc(r.clock_in) : '<span style="color:#999">未打卡</span>') + '</td>' +
+      '<td>' + (r.clock_out ? esc(r.clock_out) : '<span style="color:#999">未打卡</span>') + '</td>' +
+      '<td>' + hours + '</td>' +
+      '<td>' + (r.wifi_verified ? '<span class="badge badge-success">已驗證</span>' : '<span class="badge badge-warning">未驗證</span>') + '</td>' +
+      '<td style="font-family:monospace;font-size:12px">' + (esc(r.ip_address) || '--') + '</td>' +
+      '<td>' + statusCell + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// ===== Admin Stats =====
+function loadAdminStats() {
+  if (!requireAdmin()) return;
+  const today = new Date().toLocaleDateString('en-CA');
+  const todayRecords = db.attendance.filter(function(a) { return a.date === today; });
+  const activeEmployees = db.employees.filter(function(e) { return e.active === 1 && e.role !== 'admin'; });
+  const activeEmpIds = new Set(activeEmployees.map(function(e) { return e.employee_id; }));
+  const clockedInToday = new Set(todayRecords.filter(function(r) { return r.clock_in && activeEmpIds.has(r.employee_id); }).map(function(r) { return r.employee_id; }));
+
+  document.getElementById('statTotalEmployees').textContent = activeEmployees.length;
+  document.getElementById('statClockedIn').textContent = clockedInToday.size;
+  document.getElementById('statNotClockedIn').textContent = Math.max(0, activeEmployees.length - clockedInToday.size);
+  document.getElementById('statTotalRecords').textContent = db.attendance.length;
+
+  // Daily chart — show ALL 7 days including zeros
+  const chartEl = document.getElementById('dailyChart');
+  const dayLabels = [];
+  const dayData = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toLocaleDateString('en-CA');
+    dayLabels.push(dateStr);
+    const count = db.attendance.filter(function(a) { return a.date === dateStr && a.clock_in; }).length;
+    dayData.push(count);
+  }
+  const maxVal = Math.max.apply(null, dayData.concat([1]));
+  chartEl.innerHTML = dayLabels.map(function(dateStr, i) {
+    const count = dayData[i];
+    const height = (count / maxVal) * 160;
+    return '<div style="flex:1;text-align:center;" title="' + dateStr + ': ' + count + '人">' +
+      '<div style="height:160px;display:flex;align-items:flex-end;justify-content:center;">' +
+      '<div style="width:60%;height:' + height + 'px;background:linear-gradient(180deg,var(--primary),var(--primary-light));border-radius:8px 8px 0 0;min-height:4px;transition:height 0.5s;"></div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">' + dateStr.substring(5) + '</div>' +
+      '<div style="font-size:14px;font-weight:600;">' + count + '</div>' +
+      '</div>';
+  }).join('');
+
+  // Department stats
+  const deptGrouped = {};
+  todayRecords.forEach(function(r) {
+    const emp = db.employees.find(function(e) { return e.employee_id === r.employee_id; });
+    const dept = emp ? (emp.department || '未分部門') : '未分部門';
+    if (!deptGrouped[dept]) deptGrouped[dept] = { total: 0, employees: new Set() };
+    deptGrouped[dept].total++;
+    deptGrouped[dept].employees.add(r.employee_id);
+  });
+
+  const deptBody = document.getElementById('deptTableBody');
+  const deptArr = Object.entries(deptGrouped);
+  if (deptArr.length === 0) {
+    deptBody.innerHTML = '<tr><td colspan="3" class="empty-state">今日暫無資料</td></tr>';
+  } else {
+    deptBody.innerHTML = deptArr.map(function(entry) {
+      return '<tr><td>' + esc(entry[0]) + '</td><td>' + entry[1].employees.size + '</td><td>' + entry[1].total + '</td></tr>';
+    }).join('');
+  }
+}
+
+// ===== Admin Employees =====
+function loadEmployees() {
+  if (!requireAdmin()) return;
+  const searchQuery = trim(document.getElementById('employeeSearchInput').value).toLowerCase();
+  const today = new Date().toLocaleDateString('en-CA');
+  const tbody = document.getElementById('employeesTableBody');
+
+  let employees = db.employees;
+  if (searchQuery) {
+    employees = employees.filter(function(e) {
+      return e.employee_id.toLowerCase().includes(searchQuery) ||
+             (e.name || '').toLowerCase().includes(searchQuery) ||
+             (e.department || '').toLowerCase().includes(searchQuery);
+    });
+  }
+
+  if (employees.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><div class="icon">👤</div>' + (searchQuery ? '未找到符合條件的員工' : '暫無員工') + '</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = employees.map(function(e) {
+    const todayRecord = db.attendance.find(function(a) { return a.employee_id === e.employee_id && a.date === today; });
+    let todayStatus = '<span style="color:#999">未打卡</span>';
+    if (todayRecord && todayRecord.clock_in) {
+      if (todayRecord.clock_out) todayStatus = '<span class="badge badge-info">' + esc(todayRecord.clock_in) + '~' + esc(todayRecord.clock_out) + '</span>';
+      else todayStatus = '<span class="badge badge-success">' + esc(todayRecord.clock_in) + '</span>';
+    }
+    const canManage = e.employee_id !== 'admin';
+    const actions = canManage ?
+      '<div class="action-btns">' +
+        (e.active ? '<button class="btn btn-outline btn-sm" onclick="confirmToggleEmployee(' + e.id + ', false)">停用</button>' : '<button class="btn btn-outline btn-sm" onclick="confirmToggleEmployee(' + e.id + ', true)">啟用</button>') +
+        '<button class="btn btn-outline btn-sm" onclick="openResetPasswordModal(' + e.id + ')">重設密碼</button>' +
+        '<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="confirmDeleteEmployee(' + e.id + ')">刪除</button>' +
+      '</div>' : '--';
+    return '<tr>' +
+      '<td style="font-weight:600">' + esc(e.employee_id) + '</td>' +
+      '<td>' + esc(e.name) + '</td>' +
+      '<td>' + (esc(e.department) || '--') + '</td>' +
+      '<td>' + (e.role === 'admin' ? '<span class="badge badge-info">管理員</span>' : '<span class="badge badge-success">員工</span>') + '</td>' +
+      '<td>' + (e.active ? '<span class="badge badge-success">在職</span>' : '<span class="badge badge-danger">停用</span>') + '</td>' +
+      '<td>' + todayStatus + '</td>' +
+      '<td style="font-size:12px;color:var(--text-secondary)">' + esc(e.created_at) + '</td>' +
+      '<td>' + actions + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function confirmToggleEmployee(id, activate) {
+  if (!requireAdmin()) return;
+  const emp = db.employees.find(function(e) { return e.id === id; });
+  if (!emp) return;
+  const msg = activate ? '確定要啟用員工「' + emp.name + '」嗎？' : '確定要停用員工「' + emp.name + '」嗎？停用後該員工將無法登入系統。';
+  showConfirm(msg, function() {
+    emp.active = activate ? 1 : 0;
+    emp.updated_at = new Date().toISOString();
+    saveDB();
+    showToast(activate ? '員工已啟用' : '員工已停用', 'success');
+    loadEmployees();
+  }, activate ? '✅' : '⚠️');
+}
+
+function toggleEmployee(id, activate) {
+  // Legacy wrapper — now goes through confirm
+  confirmToggleEmployee(id, activate);
+}
+
+// v3.7: 刪除員工（連同其所有考勤與請假記錄）
+// 刪除後寫入 deleted_employees 名單（tombstone），雲端同步合併時跳過該員工 → 刪除會同步到所有裝置且不會復活
+function confirmDeleteEmployee(id) {
+  if (!requireAdmin()) return;
+  const emp = db.employees.find(function(e) { return e.id === id; });
+  if (!emp) return;
+  if (emp.employee_id === 'admin') { showToast('系統管理員帳號不可刪除', 'error'); return; }
+  const attCount = db.attendance.filter(function(a) { return a.employee_id === emp.employee_id; }).length;
+  const leaveCount = (db.leave_requests || []).filter(function(l) { return l.employee_id === emp.employee_id; }).length;
+  const msg = '確定要刪除員工「' + emp.name + '（' + emp.employee_id + '）」嗎？\n\n' +
+    '⚠️ 此操作將一併刪除：\n' +
+    '• 考勤記錄 ' + attCount + ' 筆\n' +
+    '• 請假申請 ' + leaveCount + ' 筆\n\n' +
+    '刪除後無法復原，並會同步到所有裝置。\n' +
+    '如只需暫時停用該員工登入，建議改用「停用」。';
+  showConfirm(msg, function() {
+    db.employees = db.employees.filter(function(e) { return e.id !== id; });
+    db.attendance = db.attendance.filter(function(a) { return a.employee_id !== emp.employee_id; });
+    db.leave_requests = (db.leave_requests || []).filter(function(l) { return l.employee_id !== emp.employee_id; });
+    if (!db.deleted_employees) db.deleted_employees = [];
+    db.deleted_employees.push({ employee_id: emp.employee_id, name: emp.name, deleted_at: new Date().toISOString() });
+    saveDB();
+    showToast('員工「' + emp.name + '」已刪除', 'success');
+    refreshAllViews();
+  }, '🗑️');
+}
+
+function showAddEmployeeModal() {
+  if (!requireAdmin()) return;
+  document.getElementById('addEmployeeModal').classList.add('active');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+document.getElementById('addEmployeeForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  if (!requireAdmin()) return;
+  const empId = trim(document.getElementById('newEmployeeId').value);
+  const empName = trim(document.getElementById('newEmployeeName').value);
+  const empPwd = document.getElementById('newEmployeePassword').value;
+  const empDept = trim(document.getElementById('newEmployeeDept').value);
+
+  if (empId.length < 2) { showToast('員工編號至少需要2個字元', 'error'); return; }
+  if (empPwd.length < 4) { showToast('密碼至少需要4個字元', 'error'); return; }
+
+  if (db.employees.find(function(e) { return e.employee_id === empId; })) {
+    showToast('員工編號已存在', 'error');
+    return;
+  }
+  db.employees.push({
+    id: db.nextEmpId++, employee_id: empId,
+    name: empName,
+    password: empPwd,
+    department: empDept,
+    role: document.getElementById('newEmployeeRole').value,
+    created_at: new Date().toLocaleString('zh-TW'), active: 1,
+    updated_at: new Date().toISOString()
+  });
+  saveDB();
+  showToast('員工建立成功！', 'success');
+  closeModal('addEmployeeModal');
+  document.getElementById('addEmployeeForm').reset();
+  loadEmployees();
+});
+
+// ===== Password Change =====
+function openChangePasswordModal() {
+  if (!requireLogin()) return;
+  document.getElementById('changePasswordForm').reset();
+  document.getElementById('changePasswordModal').classList.add('active');
+}
+
+document.getElementById('changePasswordForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  if (!requireLogin()) return;
+  const oldPwd = document.getElementById('oldPassword').value;
+  const newPwd = document.getElementById('newPassword').value;
+  const confirmPwd = document.getElementById('confirmPassword').value;
+
+  const user = db.employees.find(function(u) { return u.employee_id === currentUser.employeeId; });
+  if (!user || user.password !== oldPwd) {
+    showToast('目前密碼不正確', 'error');
+    return;
+  }
+  if (newPwd.length < 4) {
+    showToast('新密碼至少需要4個字元', 'error');
+    return;
+  }
+  if (newPwd !== confirmPwd) {
+    showToast('兩次輸入的新密碼不一致', 'error');
+    return;
+  }
+  if (newPwd === oldPwd) {
+    showToast('新密碼不能與舊密碼相同', 'error');
+    return;
+  }
+  user.password = newPwd;
+  user.updated_at = new Date().toISOString();
+  saveDB();
+  showToast('密碼修改成功！', 'success');
+  closeModal('changePasswordModal');
+});
+
+// ===== Admin Reset Password =====
+let resetEmpId = null;
+
+function openResetPasswordModal(id) {
+  if (!requireAdmin()) return;
+  const emp = db.employees.find(function(e) { return e.id === id; });
+  if (!emp) return;
+  if (emp.employee_id === 'admin') {
+    showToast('無法重設系統管理員密碼', 'error');
+    return;
+  }
+  resetEmpId = id;
+  document.getElementById('resetEmpDisplay').value = emp.employee_id + ' - ' + emp.name;
+  document.getElementById('resetNewPassword').value = '';
+  document.getElementById('resetPasswordModal').classList.add('active');
+}
+
+document.getElementById('resetPasswordForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  if (!requireAdmin()) return;
+  if (!resetEmpId) return;
+  const newPwd = document.getElementById('resetNewPassword').value;
+  if (newPwd.length < 4) {
+    showToast('新密碼至少需要4個字元', 'error');
+    return;
+  }
+  const emp = db.employees.find(function(e) { return e.id === resetEmpId; });
+  if (!emp) return;
+  emp.password = newPwd;
+  emp.updated_at = new Date().toISOString();
+  saveDB();
+  showToast('員工「' + emp.name + '」的密碼已重設', 'success');
+  closeModal('resetPasswordModal');
+  resetEmpId = null;
+});
+
+// ===== Admin Attendance =====
+function loadAdminAttendance() {
+  if (!requireAdmin()) return;
+  const startDate = document.getElementById('adminAttStartDate').value;
+  const endDate = document.getElementById('adminAttEndDate').value;
+  const empId = trim(document.getElementById('adminAttEmployeeId').value);
+  let records = db.attendance.map(function(a) {
+    const emp = db.employees.find(function(e) { return e.employee_id === a.employee_id; });
+    return Object.assign({}, a, { employee_name: emp ? emp.name : null, department: emp ? emp.department : null });
+  });
+  if (startDate) records = records.filter(function(r) { return r.date >= startDate; });
+  if (endDate) records = records.filter(function(r) { return r.date <= endDate; });
+  if (empId) records = records.filter(function(r) { return r.employee_id === empId; });
+
+  // v3.6: 合併已核准請假（逐日展開）
+  var leaveDays = getApprovedLeaveDays(empId || null, startDate || null, endDate || null);
+  var leaveMap = {};
+  leaveDays.forEach(function(ld) { leaveMap[ld.employee_id + '|' + ld.date] = ld; });
+  var attKeys = {};
+  records.forEach(function(r) {
+    var key = r.employee_id + '|' + r.date;
+    attKeys[key] = true;
+    if (leaveMap[key]) r._leaveType = leaveMap[key].leave_type;
+  });
+  leaveDays.forEach(function(ld) {
+    var key = ld.employee_id + '|' + ld.date;
+    if (!attKeys[key]) {
+      records.push({
+        date: ld.date, employee_id: ld.employee_id, employee_name: ld.employee_name,
+        department: ld.department, clock_in: null, clock_out: null, status: 'leave',
+        _isLeave: true, _leaveType: ld.leave_type
+      });
+    }
+  });
+
+  records.sort(function(a, b) { if (b.date !== a.date) return b.date.localeCompare(a.date); return (b.clock_in || '').localeCompare(a.clock_in || ''); });
+
+  const tbody = document.getElementById('adminAttTableBody');
+  if (records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><div class="icon">📭</div>暫無記錄</td></tr>';
+    return;
+  }
+  tbody.innerHTML = records.map(function(r) {
+    if (r._isLeave) {
+      return '<tr style="background:#f0f7ff">' +
+        '<td>' + esc(r.date) + '</td>' +
+        '<td style="font-weight:600">' + esc(r.employee_id) + '</td>' +
+        '<td>' + (esc(r.employee_name) || '--') + '</td>' +
+        '<td>' + (esc(r.department) || '--') + '</td>' +
+        '<td>' + leaveDayBadge(r._leaveType) + '</td>' +
+        '<td><span style="color:#999">--</span></td>' +
+        '<td><span style="color:#999">休假</span></td>' +
+        '<td><span style="color:#999">--</span></td>' +
+        '<td><span style="color:#999">--</span></td>' +
+        '<td>' + leaveDayBadge(r._leaveType) + '</td>' +
+        '</tr>';
+    }
+    var wh = calcWorkHours(r);
+    var statusCell = statusBadge(r.status);
+    if (r._leaveType) statusCell += '<br><span style="font-size:11px">' + leaveDayBadge(r._leaveType) + '</span>';
+    return '<tr>' +
+      '<td>' + esc(r.date) + '</td>' +
+      '<td style="font-weight:600">' + esc(r.employee_id) + '</td>' +
+      '<td>' + (esc(r.employee_name) || '--') + '</td>' +
+      '<td>' + (esc(r.department) || '--') + '</td>' +
+      '<td>' + (r.clock_in ? esc(r.clock_in) : '<span style="color:#999">--</span>') + '</td>' +
+      '<td>' + (r.clock_out ? esc(r.clock_out) : '<span style="color:#999">--</span>') + '</td>' +
+      '<td style="font-weight:600;color:var(--primary)">' + (wh ? wh.text : (r.clock_in ? '<span style="color:#999;font-weight:400">工作中</span>' : '--')) + '</td>' +
+      '<td>' + (r.wifi_verified ? '<span class="badge badge-success">是</span>' : '<span class="badge badge-warning">否</span>') + '</td>' +
+      '<td style="font-family:monospace;font-size:12px">' + (esc(r.ip_address) || '--') + '</td>' +
+      '<td>' + statusCell + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function exportCSV() {
+  if (!requireAdmin()) return;
+  const startDate = document.getElementById('adminAttStartDate').value;
+  const endDate = document.getElementById('adminAttEndDate').value;
+  const empId = trim(document.getElementById('adminAttEmployeeId').value);
+  let records = db.attendance.map(function(a) {
+    const emp = db.employees.find(function(e) { return e.employee_id === a.employee_id; });
+    return Object.assign({}, a, { employee_name: emp ? emp.name : '', department: emp ? emp.department : '' });
+  });
+  if (startDate) records = records.filter(function(r) { return r.date >= startDate; });
+  if (endDate) records = records.filter(function(r) { return r.date <= endDate; });
+  if (empId) records = records.filter(function(r) { return r.employee_id === empId; });
+
+  // v3.6: 合併已核准請假（逐日展開）
+  var leaveDays = getApprovedLeaveDays(empId || null, startDate || null, endDate || null);
+  var leaveMap = {};
+  leaveDays.forEach(function(ld) { leaveMap[ld.employee_id + '|' + ld.date] = ld; });
+  var attKeys = {};
+  records.forEach(function(r) {
+    var key = r.employee_id + '|' + r.date;
+    attKeys[key] = true;
+    if (leaveMap[key]) r._leaveType = leaveMap[key].leave_type;
+  });
+  leaveDays.forEach(function(ld) {
+    var key = ld.employee_id + '|' + ld.date;
+    if (!attKeys[key]) {
+      records.push({
+        date: ld.date, employee_id: ld.employee_id, employee_name: ld.employee_name,
+        department: ld.department, clock_in: null, clock_out: null, status: 'leave',
+        _isLeave: true, _leaveType: ld.leave_type
+      });
+    }
+  });
+  records.sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+  const headers = ['員工編號', '姓名', '部門', '日期', '上班時間', '下班時間', '工作時數', '工作時數(小時)', '上班IP', '下班IP', 'WiFi驗證', '狀態'];
+  const statusZh = { normal: '正常', present: '正常', late: '遲到', early: '早退', late_early: '遲到+早退', absent: '缺席', leave: '請假' };
+  const lines = [headers.join(',')];
+  records.forEach(function(r) {
+    var clockIn, clockOut, whText, whHours, ip1, ip2, wifi, status;
+    if (r._isLeave) {
+      clockIn = '請假(' + leaveTypeText(r._leaveType) + ')';
+      clockOut = ''; whText = ''; whHours = ''; ip1 = ''; ip2 = ''; wifi = '';
+      status = '請假(' + leaveTypeText(r._leaveType) + ')';
+    } else {
+      const wh = calcWorkHours(r);
+      whText = wh ? wh.text : ''; whHours = wh ? wh.hours.toFixed(2) : '';
+      clockIn = r.clock_in || ''; clockOut = r.clock_out || '';
+      ip1 = r.clock_in_ip || r.ip_address || ''; ip2 = r.clock_out_ip || '';
+      wifi = r.wifi_verified ? '是' : '否';
+      status = statusZh[r.status] || r.status;
+      if (r._leaveType) status += ' / 請假(' + leaveTypeText(r._leaveType) + ')';
+    }
+    var row = [r.employee_id, r.employee_name, r.department, r.date, clockIn, clockOut, whText, whHours, ip1, ip2, wifi, status];
+    lines.push(row.map(function(v) {
+      var s = String(v || '');
+      return '"' + s.replace(/"/g, '""') + '"';
+    }).join(','));
+  });
+
+  var dateStr = new Date().toLocaleDateString('en-CA');
+  var blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'attendance_export_' + dateStr + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV已匯出（共 ' + records.length + ' 筆記錄，含請假）', 'success');
+}
+
+// ===== WiFi Settings =====
+async function loadWifiSettings() {
+  if (!requireAdmin()) return;
+  const wifi = db.wifiSettings;
+  document.getElementById('wifiNameInput').value = wifi.wifi_name || '';
+  document.getElementById('allowedIPsInput').value = wifi.allowed_ips || '';
+  document.getElementById('wifiEnabledInput').checked = wifi.enabled;
+
+  if (!currentIP || currentIP === 'unknown') currentIP = await detectIP();
+  document.getElementById('adminCurrentIP').textContent = currentIP;
+}
+
+function addCurrentIP() {
+  if (!requireAdmin()) return;
+  if (!currentIP || currentIP === 'unknown') {
+    showToast('無法取得目前IP位址，請稍後再試', 'error');
+    return;
+  }
+  const input = document.getElementById('allowedIPsInput');
+  const existing = input.value.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  if (!existing.includes(currentIP)) {
+    existing.push(currentIP);
+    input.value = existing.join(', ');
+    showToast('已加入IP: ' + currentIP, 'success');
+  } else {
+    showToast('此IP已在清單中', 'info');
+  }
+}
+
+function saveWifiSettings() {
+  if (!requireAdmin()) return;
+  db.wifiSettings = {
+    wifi_name: trim(document.getElementById('wifiNameInput').value),
+    allowed_ips: trim(document.getElementById('allowedIPsInput').value),
+    enabled: document.getElementById('wifiEnabledInput').checked,
+    updated_at: new Date().toISOString()
+  };
+  saveDB();
+  showToast('WiFi設定已儲存！', 'success');
+  loadClockStatus();
+}
+
+// ===== Schedule Settings =====
+function loadScheduleSettings() {
+  if (!requireAdmin()) return;
+  const schedule = db.schedule || { start_time: '09:00', end_time: '18:00', enabled: true };
+  document.getElementById('scheduleStartTime').value = schedule.start_time || '09:00';
+  document.getElementById('scheduleEndTime').value = schedule.end_time || '18:00';
+  document.getElementById('scheduleEnabled').checked = schedule.enabled !== false;
+}
+
+function saveScheduleSettings() {
+  if (!requireAdmin()) return;
+  db.schedule = {
+    start_time: document.getElementById('scheduleStartTime').value,
+    end_time: document.getElementById('scheduleEndTime').value,
+    enabled: document.getElementById('scheduleEnabled').checked,
+    updated_at: new Date().toISOString()
+  };
+  saveDB();
+  showToast('排班設定已儲存！', 'success');
+}
+
+// ===== Data Backup / Restore =====
+function exportFullData() {
+  if (!requireAdmin()) return;
+  const dateStr = new Date().toLocaleDateString('en-CA');
+  const data = JSON.stringify(db, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'attendance_backup_' + dateStr + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('資料已匯出（共 ' + db.employees.length + ' 名員工，' + db.attendance.length + ' 筆記錄）', 'success');
+}
+
+function importFullData(event) {
+  if (!requireAdmin()) return;
+  const file = event.target.files[0];
+  if (!file) return;
+  showConfirm('還原操作會覆蓋目前所有資料，確定要繼續嗎？', function() {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const imported = JSON.parse(e.target.result);
+        if (!imported.employees || !imported.attendance) {
+          showToast('檔案格式不正確：缺少必要資料', 'error');
+          return;
+        }
+        db = imported;
+        if (!db.wifiSettings) db.wifiSettings = { allowed_ips: '', wifi_name: 'Office WiFi', enabled: false };
+        if (!db.schedule) db.schedule = { start_time: '09:00', end_time: '18:00', enabled: true };
+        if (!db.nextEmpId) db.nextEmpId = db.employees.length + 1;
+        if (!db.nextAttId) db.nextAttId = db.attendance.length + 1;
+        // 補上 updated_at，確保匯入後與雲端合併時新舊判定正確
+        const impNowISO = new Date().toISOString();
+        (db.employees || []).forEach(function(e) { if (!e.updated_at) e.updated_at = impNowISO; });
+        (db.attendance || []).forEach(function(a) { if (!a.updated_at) a.updated_at = impNowISO; });
+        saveDB();
+        showToast('資料還原成功！', 'success');
+        loadEmployees();
+      } catch(err) {
+        showToast('檔案解析失敗：' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }, '⚠️');
+}
+
+// ===== Cloud Sync (cross-device data sharing) =====
+const SYNC_KEY_STORAGE = 'attendance_sync_key';
+// v3.0：改用 GitHub API 作為雲端同步後端。
+// 根因：extendsclass.com 的 OPTIONS preflight 回應 500，瀏覽器拒絕所有 PUT 請求（CORS preflight failure）。
+// GitHub API 正確回應 204 給 OPTIONS preflight，所有 HTTP method 均可從瀏覽器使用。
+// GET（拉取）：raw.githubusercontent.com — 簡單請求，不需 auth，CORS *
+// PUT（推播）：api.github.com — 需 token，正確 CORS preflight（204）
+const GITHUB_OWNER = 'TYcompnies';
+const GITHUB_REPO = 'attendance';
+const GITHUB_BRANCH = 'main';
+// v3.0: Token stored in localStorage (not hardcoded — GitHub push protection blocks secrets in code)
+function getGitHubToken() { return localStorage.getItem('attendance_github_token') || ''; }
+function setGitHubToken(t) { if (t) localStorage.setItem('attendance_github_token', t); else localStorage.removeItem('attendance_github_token'); }
+const GITHUB_API_BASE = 'https://api.github.com/repos/' + GITHUB_OWNER + '/' + GITHUB_REPO + '/contents/sync/';
+const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/' + GITHUB_OWNER + '/' + GITHUB_REPO + '/' + GITHUB_BRANCH + '/sync/';
+// v3.0：舊版 extendsclass.com API 已完全移除（OPTIONS preflight 回應 500，瀏覽器無法使用）
+let syncInProgress = false;
+let pushFromPull = false;  // v2.7：標記「這次 push 是 pullFromCloud 觸發的」，避免 push→pull→push 無限循環
+let lastSyncError = '';    // v2.8：記錄最後一次同步錯誤訊息，顯示在徽章 title 中
+let syncRetryDelay = 10000; // v2.8：動態重試延遲（指數退避）
+let syncLog = [];        // v2.9：同步日誌，記錄最近 20 次嘗試的時間/操作/結果/錯誤/響應碼
+let autoSyncLock = false; // v2.9：互斥鎖，避免 setInterval 觸發並行同步導致 race condition
+function addSyncLog(op, status, detail, httpStatus) {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('zh-TW', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+  syncLog.unshift({ time: timeStr, op: op, status: status, detail: detail || '', http: httpStatus || 0 });
+  if (syncLog.length > 20) syncLog.pop();
+}
+function getSyncLogHTML() {
+  if (!syncLog.length) return '<div style="color:var(--text-secondary);font-size:12px;">暫無同步紀錄</div>';
+  return syncLog.map(function(l) {
+    var icon = l.status === 'ok' ? '✅' : (l.status === 'err' ? '❌' : '⚠️');
+    var color = l.status === 'ok' ? 'var(--success)' : (l.status === 'err' ? 'var(--danger)' : 'var(--warning)');
+    var detail = l.detail ? ' — ' + esc(l.detail) : '';
+    var http = l.http ? ' [' + l.http + ']' : '';
+    return '<div style="font-size:12px;font-family:monospace;margin:2px 0;"><span style="color:' + color + '">' + icon + '</span> ' + esc(l.time) + ' ' + esc(l.op) + http + detail + '</div>';
+  }).join('');
+}
+
+function getSyncKey() { return localStorage.getItem(SYNC_KEY_STORAGE) || ''; }
+function setSyncKey(k) { if (k) localStorage.setItem(SYNC_KEY_STORAGE, k); else localStorage.removeItem(SYNC_KEY_STORAGE); }
+// v3.0：GitHub API 需要 SHA 來更新檔案；每次 PUT 成功後儲存新 SHA
+function getSyncSha() { return localStorage.getItem('attendance_sync_sha_' + getSyncKey()) || ''; }
+function setSyncSha(sha) { var k = 'attendance_sync_sha_' + getSyncKey(); if (sha) localStorage.setItem(k, sha); else localStorage.removeItem(k); }
+function clearSyncSha() { localStorage.removeItem('attendance_sync_sha_' + getSyncKey()); }
+// v3.0：產生隨機同步碼（7位小寫英數）
+function generateSyncCode() {
+  var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  var code = '';
+  for (var i = 0; i < 7; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  return code;
+}
+// v3.0：Base64 編碼（支援 UTF-8 中文）
+function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
+function decodeBase64(b64) { return decodeURIComponent(escape(atob(b64))); }
+function getDbSizeKB() { return (JSON.stringify(db).length / 1024).toFixed(1); }
+function saveLocalOnly() { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+
+async function createCloudSync() {
+  if (!requireAdmin()) return;
+  if (!getGitHubToken()) { showToast('請先在下方設定 GitHub Token', 'warning'); document.getElementById('githubTokenInput').focus(); return; }
+  if (getSyncKey()) { showToast('已啟用雲端同步，無需重複建立', 'warning'); loadSyncSettings(); return; }
+  // v3.3：建立前先檢查 GitHub 上是否已有同步檔案
+  // 防止手機等新設備誤建新同步碼（只有預設 admin），導致同步混亂
+  try {
+    var checkCtrl = new AbortController();
+    var checkT = setTimeout(function() { checkCtrl.abort(); }, 15000);
+    var checkRes = await fetch(GITHUB_API_BASE, {
+      signal: checkCtrl.signal,
+      mode: 'cors',
+      headers: { 'Authorization': 'token ' + getGitHubToken(), 'Accept': 'application/vnd.github.v3+json' }
+    });
+    clearTimeout(checkT);
+    if (checkRes.ok) {
+      var existingFiles = await checkRes.json();
+      if (Array.isArray(existingFiles)) {
+        var existingJson = existingFiles.filter(function(f) { return f.name && /\.json$/.test(f.name); });
+        if (existingJson.length > 0) {
+          // 雲端已有同步檔案 → 提示用戶連接現有的，而非建立新的
+          var existingCode = existingJson[0].name.replace(/\.json$/, '');
+          showConfirm(
+            '雲端已有同步碼 ' + existingCode + '（共 ' + existingJson.length + ' 個同步檔案）。\n\n' +
+            '建議「連接」現有同步碼而非建立新的，避免同步資料分裂。\n\n' +
+            '點擊確認 → 自動連接同步碼 ' + existingCode + '\n' +
+            '點擊取消 → 仍要建立新的同步碼',
+            function() {
+              document.getElementById('syncCodeInput').value = existingCode;
+              doConnect(existingCode);
+            },
+            '⚠️'
+          );
+          return;
+        }
+      }
+    }
+  } catch(e) {
+    // 檢查失敗不阻塞建立流程
+    console.log('Pre-create check failed:', e.message);
+  }
+  clearAllSyncState();
+  try {
+    showToast('正在建立雲端空間...', 'info');
+    var code = generateSyncCode();
+    db._last_sync = new Date().toISOString();
+    var body = JSON.stringify({
+      message: 'Create sync: ' + code,
+      content: encodeBase64(JSON.stringify(db))
+    });
+    var ctrl = new AbortController();
+    var t = setTimeout(function() { ctrl.abort(); }, 45000);
+    var res = await fetch(GITHUB_API_BASE + code + '.json', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + getGitHubToken(),
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: body,
+      signal: ctrl.signal,
+      mode: 'cors'
+    });
+    clearTimeout(t);
+    if (!res.ok) {
+      var errBody = await res.text();
+      throw new Error('GitHub API ' + res.status + ': ' + errBody.substring(0, 100));
+    }
+    var data = await res.json();
+    setSyncKey(code);
+    setSyncSha(data.content.sha);
+    saveLocalOnly();
+    addSyncLog('CREATE', 'ok', '同步碼 ' + code, 201);
+    showToast('雲端同步已啟用！同步碼：' + code, 'success');
+    startAutoSync();
+    loadSyncSettings();
+  } catch(e) {
+    addSyncLog('CREATE', 'err', e.message, 0);
+    showToast('建立失敗：' + e.message, 'error');
+  }
+}
+
+async function connectCloudSync() {
+  if (!requireAdmin()) return;
+  if (!getGitHubToken()) { showToast('請先設定 GitHub Token', 'warning'); document.getElementById('githubTokenInput').focus(); return; }
+  const code = trim(document.getElementById('syncCodeInput').value);
+  if (!code) { showToast('請輸入同步碼', 'error'); return; }
+  if (getSyncKey() && getSyncKey() !== code) {
+    showConfirm('目前已有啟用中的同步碼。連接新同步碼後，雲端資料會與本機資料合併，確定繼續？', function() { doConnect(code); }, '⚠️');
+    return;
+  }
+  doConnect(code);
+}
+
+async function doConnect(code) {
+  clearAllSyncState();
+  try {
+    showToast('正在連接雲端並下載資料...', 'info');
+    var ctrl = new AbortController();
+    var t = setTimeout(function() { ctrl.abort(); }, 45000);
+    // v3.0：GitHub API GET — 即時取得最新資料，無 CDN 快取問題
+    var res = await fetch(GITHUB_API_BASE + code + '.json', {
+      signal: ctrl.signal,
+      mode: 'cors',
+      headers: {
+        'Authorization': 'token ' + getGitHubToken(),
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    clearTimeout(t);
+    if (res.status === 404) throw new Error('同步碼不存在或已失效');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var ghData = await res.json();
+    var cloudDb = JSON.parse(decodeBase64(ghData.content.replace(/\n/g, '')));
+    if (!cloudDb || !cloudDb.employees || !cloudDb.attendance) throw new Error('雲端資料格式不正確');
+    var beforeCount = db.attendance.length;
+    mergeDB(cloudDb);
+    setSyncKey(code);
+    if (ghData.sha) setSyncSha(ghData.sha);
+    db._last_sync = new Date().toISOString();
+    saveLocalOnly();
+    await pushToCloud(true, false, true);
+    showToast('連接成功！已合併雲端資料（考勤 ' + beforeCount + ' → ' + db.attendance.length + ' 筆）', 'success');
+    addSyncLog('CONNECT', 'ok', '同步碼 ' + code + ' 考勤 ' + beforeCount + '→' + db.attendance.length, 200);
+    startAutoSync();      // 確保自動同步引擎啟動（手動輸入同步碼連接的情況）
+    refreshAllViews();
+  } catch(e) {
+    addSyncLog('CONNECT', 'err', e.message, 0);
+    showToast('連接失敗：' + e.message, 'error');
+  }
+}
+
+function mergeDB(cloudDb) {
+  if (!cloudDb) return;
+  // v3.7: 已刪除員工名單（tombstone）聯集合併 — 任一裝置刪除的員工，所有裝置都不讓他復活
+  if (!db.deleted_employees) db.deleted_employees = [];
+  const delMap = {};
+  db.deleted_employees.forEach(function(d) { if (d && d.employee_id) delMap[d.employee_id] = d; });
+  (cloudDb.deleted_employees || []).forEach(function(cd) {
+    if (!cd || !cd.employee_id) return;
+    const ld = delMap[cd.employee_id];
+    if (!ld) { delMap[cd.employee_id] = cd; return; }
+    if (cd.deleted_at && (!ld.deleted_at || cd.deleted_at > ld.deleted_at)) delMap[cd.employee_id] = cd;
+  });
+  db.deleted_employees = Object.values(delMap);
+  const isDeleted = function(empId) { return !!delMap[empId]; };
+
+  // 員工：以 employee_id（業務鍵）合併，避免兩台裝置各自新增員工拿到相同數字id而互相覆蓋
+  const empMap = {};
+  (db.employees || []).forEach(function(e) {
+    if (!e || !e.employee_id) return;
+    if (isDeleted(e.employee_id)) return; // v3.7: 其他裝置已刪除的員工，本機殘留也一併清除
+    empMap[e.employee_id] = e;
+  });
+  (cloudDb.employees || []).forEach(function(ce) {
+    if (!ce || !ce.employee_id) return;
+    if (isDeleted(ce.employee_id)) return; // v3.7: 已刪除的員工不從雲端復活
+    const le = empMap[ce.employee_id];
+    if (!le) { empMap[ce.employee_id] = ce; return; }
+    if (ce.updated_at && (!le.updated_at || ce.updated_at > le.updated_at)) {
+      // 雲端較新：保留本機的 id 與 created_at，其餘以雲端為準
+      const keepId = le.id, keepCreated = le.created_at;
+      Object.keys(ce).forEach(function(k) { le[k] = ce[k]; });
+      le.id = keepId;
+      le.created_at = keepCreated || ce.created_at;
+    }
+  });
+  db.employees = Object.values(empMap);
+
+  // 考勤：以 employee_id + date 為業務鍵合併；
+  // 若本機只有上班、雲端只有下班（或相反）→ 欄位級合併成完整一筆，避免重複與缺漏
+  const attMap = {};
+  (db.attendance || []).forEach(function(a) {
+    if (!a || !a.employee_id || !a.date) return;
+    if (isDeleted(a.employee_id)) return; // v3.7: 已刪除員工的本機殘留考勤也清除
+    attMap[a.employee_id + '|' + a.date] = a;
+  });
+  (cloudDb.attendance || []).forEach(function(ca) {
+    if (!ca || !ca.employee_id || !ca.date) return;
+    if (isDeleted(ca.employee_id)) return; // v3.7: 已刪除員工的考勤不從雲端復活
+    const k = ca.employee_id + '|' + ca.date;
+    const la = attMap[k];
+    if (!la) { attMap[k] = ca; return; }
+    let changed = false;
+    if (!la.clock_in && ca.clock_in) { la.clock_in = ca.clock_in; la.clock_in_ip = ca.clock_in_ip || la.clock_in_ip; changed = true; }
+    if (!la.clock_out && ca.clock_out) { la.clock_out = ca.clock_out; la.clock_out_ip = ca.clock_out_ip || la.clock_out_ip; changed = true; }
+    if (ca.updated_at && (!la.updated_at || ca.updated_at > la.updated_at)) {
+      la.updated_at = ca.updated_at;
+      if (ca.status) la.status = ca.status;
+      if (typeof ca.wifi_verified !== 'undefined') la.wifi_verified = ca.wifi_verified;
+      changed = true;
+    }
+    if (changed && !la.updated_at) la.updated_at = new Date().toISOString();
+    if (changed && !la.ip_address && (la.clock_in_ip || ca.ip_address)) la.ip_address = la.clock_in_ip || ca.ip_address;
+  });
+  db.attendance = Object.values(attMap);
+
+  // 請假：以唯一 id 為業務鍵（id = L + 時間戳 + 隨機數，全域唯一），updated_at 新者優先
+  // 讓多裝置各自申請、以及管理員在不同裝置審批時，都能正確合併（以最新變更為準）
+  const leaveMap = {};
+  (db.leave_requests || []).forEach(function(l) {
+    if (!l || !l.id) return;
+    if (l.employee_id && isDeleted(l.employee_id)) return; // v3.7: 已刪除員工的本機殘留假單也清除
+    leaveMap[l.id] = l;
+  });
+  (cloudDb.leave_requests || []).forEach(function(cl) {
+    if (!cl || !cl.id) return;
+    if (cl.employee_id && isDeleted(cl.employee_id)) return; // v3.7: 已刪除員工的假單不從雲端復活
+    const ll = leaveMap[cl.id];
+    if (!ll) { leaveMap[cl.id] = cl; return; }
+    if (cl.updated_at && (!ll.updated_at || cl.updated_at > ll.updated_at)) {
+      Object.keys(cl).forEach(function(k) { ll[k] = cl[k]; });
+    }
+  });
+  db.leave_requests = Object.values(leaveMap);
+
+  // 重新編號：避免兩台裝置各自新增時數字 id 衝突（員工以 employee_id、考勤以 employee_id+date 為業務鍵）
+  db.employees.forEach(function(e, i) { e.id = i + 1; });
+  db.attendance.forEach(function(a, i) { a.id = i + 1; });
+  db.nextEmpId = db.employees.length + 1;
+  db.nextAttId = db.attendance.length + 1;
+
+  // WiFi 與排班設定：以 updated_at 新者為準
+  ['wifiSettings', 'schedule'].forEach(function(k) {
+    if (!db[k]) { db[k] = cloudDb[k] || null; return; }
+    if (!cloudDb[k]) return;
+    const lts = db[k].updated_at || '', cts = cloudDb[k].updated_at || '';
+    if (cts && (!lts || cts > lts)) db[k] = cloudDb[k];
+  });
+  if (!db.wifiSettings) db.wifiSettings = { allowed_ips: '', wifi_name: 'Office WiFi', enabled: false };
+  if (!db.schedule) db.schedule = { start_time: '09:00', end_time: '18:00', enabled: true };
+}
+
+async function pushToCloud(silent, noBadge, skipPull) {
+  var key = getSyncKey();
+  if (!key) return;
+  if (syncInProgress) { syncPending = true; return; }
+  syncInProgress = true;
+  var ok = false;
+  var errStatus = 0;
+  try {
+    syncPending = false;
+    var sizeKB = JSON.stringify(db).length / 1024;
+    if (sizeKB > 90) {
+      showToast('⚠️ 資料量已達 ' + Math.round(sizeKB) + 'KB，請定期匯出備份', 'warning');
+    }
+    db._last_sync = new Date().toISOString();
+    // v3.0：GitHub Contents API PUT — 正確 CORS preflight（204）
+    var putBody = {
+      message: 'Sync push: ' + new Date().toISOString(),
+      content: encodeBase64(JSON.stringify(db))
+    };
+    var sha = getSyncSha();
+    if (sha) putBody.sha = sha;
+    var ctrl = new AbortController();
+    var t = setTimeout(function() { ctrl.abort(); }, 45000);
+    var res = await fetch(GITHUB_API_BASE + key + '.json', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + getGitHubToken(),
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(putBody),
+      signal: ctrl.signal,
+      mode: 'cors'
+    });
+    clearTimeout(t);
+    errStatus = res.status;
+    if (res.status === 409 || res.status === 422) {
+      // SHA 過期 — 另一台裝置已更新檔案。清除 SHA，先 pull 再重試
+      clearSyncSha();
+      addSyncLog('PUT', 'ok', 'SHA 衝突，先拉取再重試', res.status);
+      syncInProgress = false;
+      await pullFromCloud(true);
+      syncInProgress = false;
+      // 重試 push
+      setTimeout(function() { pushToCloud(silent, noBadge, skipPull); }, 500);
+      return;
+    }
+    if (!res.ok) {
+      var errText = await res.text();
+      throw new Error('GitHub API ' + res.status + ': ' + errText.substring(0, 80));
+    }
+    var data = await res.json();
+    setSyncSha(data.content.sha); // 儲存新 SHA 供下次更新用
+    saveLocalOnly();
+    ok = true;
+    lastSyncError = '';
+    syncFailCount = 0;
+    syncRetryDelay = 10000;
+    if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
+    addSyncLog('PUT', 'ok', '大小 ' + sizeKB.toFixed(1) + 'KB', 200);
+    if (!silent) showToast('同步完成：' + new Date().toLocaleTimeString('zh-TW'), 'success');
+  } catch(e) {
+    syncPending = true;
+    var msg = '';
+    if (e.name === 'AbortError') {
+      msg = '連線逾時（45秒），網路可能不穩定';
+    } else if (errStatus === 404) {
+      msg = '同步檔案不存在（可能已刪除），正在自動尋找正確的同步碼...';
+      // v3.3：同步碼已失效（檔案被刪除），清除並自動重新尋找
+      clearAllSyncState();
+      setSyncKey('');
+      saveLocalOnly();
+      updateSyncBadge('error');
+      if (getGitHubToken()) setTimeout(function() { autoFindSyncCode(true); }, 1500);
+      return;
+    } else if (errStatus === 401 || errStatus === 403) {
+      msg = 'GitHub 認證失敗（' + errStatus + '），請聯繫管理員';
+    } else if (errStatus === 0 || !errStatus) {
+      msg = '網路連線失敗（' + (e.message || 'TypeError') + '）';
+    } else if (errStatus >= 500) {
+      msg = 'GitHub 伺服器暫時異常（' + errStatus + '）';
+    } else {
+      msg = e.message;
+    }
+    lastSyncError = '推播失敗：' + msg;
+    syncFailCount++;
+    addSyncLog('PUT', 'err', msg, errStatus);
+    if (!silent && !noBadge) showToast('同步失敗：' + msg + '（' + Math.round(syncRetryDelay/1000) + '秒後自動重試）', 'error');
+    if (!syncRetryTimer) {
+      syncRetryTimer = setTimeout(function() {
+        syncRetryTimer = null;
+        if (syncPending && getSyncKey()) pushToCloud(true);
+      }, syncRetryDelay);
+      syncRetryDelay = Math.min(syncRetryDelay * 2, 60000);
+    }
+  } finally {
+    syncInProgress = false;
+    if (ok && syncPending) {
+      syncPending = false;
+      setTimeout(function() { pushToCloud(true); }, 300);
+    }
+    if (ok) {
+      if (!noBadge) updateSyncBadge('synced');
+      if (!pushFromPull && !skipPull) setTimeout(function() { pullFromCloud(true); }, 500);
+    } else {
+      if (!noBadge) updateSyncBadge('error');
+    }
+  }
+}
+
+// v2.12：用 pendingPull 旗標取代無限遞迴 setTimeout — 避免 syncInProgress 為 true 時堆積大量重試
+let pendingPull = false;
+// v2.12：連續失敗計數器 — 超過 3 次自動重置同步狀態
+let syncFailCount = 0;
+
+async function pullFromCloud(silent) {
+  const key = getSyncKey();
+  if (!key) return;
+  // v2.12：如果同步進行中，標記 pendingPull 並返回（不再無限遞迴 setTimeout）
+  if (syncInProgress) { pendingPull = true; return; }
+  syncInProgress = true;
+  var changed = false, success = false;
+  var errStatus = 0;
+  try {
+    var snap = function() { return JSON.stringify({ emp: db.employees, att: db.attendance, wifi: db.wifiSettings, sched: db.schedule }); };
+    var beforeSnap = snap();
+    var ctrl = new AbortController();
+    var t = setTimeout(function() { ctrl.abort(); }, 45000);
+    // v3.0：GitHub API GET — 無 CDN 快取問題，即時取得最新資料
+    // raw.githubusercontent.com 有 5 分鐘 CDN 快取，會導致跨裝置同步延遲
+    var res = await fetch(GITHUB_API_BASE + key + '.json', {
+      signal: ctrl.signal,
+      mode: 'cors',
+      headers: {
+        'Authorization': 'token ' + getGitHubToken(),
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    clearTimeout(t);
+    errStatus = res.status;
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    // v3.0：GitHub API 回應格式 { content: Base64, sha: ... } — 需解碼
+    var ghData = await res.json();
+    var sha = ghData.sha || '';
+    var cloudDb = JSON.parse(decodeBase64(ghData.content.replace(/\n/g, '')));
+    if (sha) setSyncSha(sha); // 更新 SHA 供下次 push 用
+    if (cloudDb && cloudDb.employees) {
+      mergeDB(cloudDb);
+      db._last_sync = new Date().toISOString();
+      saveLocalOnly();
+      changed = snap() !== beforeSnap;
+      success = true;
+      syncFailCount = 0;
+      addSyncLog('GET', 'ok', changed ? '資料有更新' : '資料一致', 200);
+    }
+  } catch(e) {
+    var msg = '';
+    if (e.name === 'AbortError') {
+      msg = '連線逾時（45秒），網路可能不穩定';
+    } else if (errStatus === 404) {
+      msg = '同步碼不存在或已失效，正在自動尋找正確的同步碼...';
+      // v3.3：同步碼已失效（檔案被刪除），清除並自動重新尋找
+      clearAllSyncState();
+      setSyncKey('');
+      saveLocalOnly();
+      updateSyncBadge('error');
+      if (getGitHubToken()) setTimeout(function() { autoFindSyncCode(true); }, 1500);
+      return;
+    } else if (errStatus === 0 || !errStatus) {
+      msg = '網路連線失敗（' + (e.message || 'TypeError') + '）';
+    } else if (errStatus >= 500) {
+      msg = 'GitHub 伺服器暫時異常（' + errStatus + '）';
+    } else {
+      msg = e.message;
+    }
+    lastSyncError = '拉取失敗：' + msg;
+    syncFailCount++;
+    addSyncLog('GET', 'err', msg, errStatus);
+    if (!silent) showToast('雲端拉取失敗：' + msg, 'error');
+    updateSyncBadge('error');
+    if (syncFailCount >= 3) {
+      addSyncLog('AUTO-RESET', 'ok', '連續失敗 ' + syncFailCount + ' 次，自動重置', 0);
+      syncInProgress = false;
+      syncPending = false;
+      syncFailCount = 0;
+      lastSyncError = '';
+      syncRetryDelay = 10000;
+      if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
+      updateSyncBadge('synced');
+      setTimeout(function() { pullFromCloud(true); }, 2000);
+      return;
+    }
+  } finally {
+    syncInProgress = false;
+  }
+  if (success) {
+    updateSyncBadge('synced');
+    lastSyncError = '';
+  }
+  if (success && (changed || syncPending) && getSyncKey()) {
+    pushFromPull = true;
+    try { await pushToCloud(true, true, true); } finally { pushFromPull = false; }
+  }
+  if (success && currentUser) {
+    if (changed) {
+      refreshAllViews();
+    } else {
+      if (currentUser.role === 'admin') loadSyncSettings();
+    }
+  }
+  if (!silent && changed) showToast('已從雲端更新資料', 'success');
+  if (success && pendingPull) {
+    pendingPull = false;
+    setTimeout(function() { pullFromCloud(true); }, 500);
+  }
+}
+
+// ===== 全畫面刷新 =====
+// 同步合併後，把系統裡所有資料驅動的項目全部重新載入，讓使用者不管停在哪一頁
+// 都能立刻看到雲端更新的最新內容（這是「自動同步」有感的核心）。
+function refreshAllViews() {
+  if (!currentUser) return;
+  loadClockStatus();   // 打卡頁：今日上下班狀態、WiFi 狀態（所有人）
+  loadHistory();       // 個人考勤紀錄（所有人）
+  loadMyLeaves();      // 個人請假紀錄（所有人）
+  if (currentUser.role === 'admin') {
+    loadAdminStats();       // 管理統計與圖表
+    loadEmployees();        // 員工管理列表
+    loadAdminAttendance();  // 管理考勤紀錄
+    loadAdminLeaves();      // 請假審批列表
+    loadWifiSettings();     // WiFi 設定（IP白名單）
+    loadScheduleSettings(); // 排班設定
+    loadSyncSettings();     // 雲端同步狀態
+  }
+}
+
+async function manualSync() {
+  if (!requireAdmin()) return;
+  if (!getSyncKey()) { showToast('尚未啟用雲端同步', 'warning'); return; }
+  // v2.11：等待進行中的同步完成，不強制覆蓋 syncInProgress（避免 race condition）
+  if (syncInProgress) {
+    showToast('同步進行中，請稍候...', 'info');
+    return;
+  }
+  showToast('正在同步...', 'info');
+  lastSyncError = '';
+  syncRetryDelay = 10000;
+  if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
+  addSyncLog('MANUAL', 'ok', '開始手動同步', 0);
+  // v2.11：先 pull（GET → merge → push-back 如有變化），再確保刷新
+  // 不再先 push 再 pull — 一次 pull 已包含 merge + push-back，減少 API 呼叫避免 502
+  await pullFromCloud(true);
+  refreshAllViews();
+  showToast('同步完成：' + new Date().toLocaleTimeString('zh-TW'), 'success');
+}
+
+// ===== 自動同步引擎 =====
+// v2.11：簡化同步流程 — 不再先 push 再 pull，改為單一 pullFromCloud（GET → merge → push-back 如有變化）
+//        一次同步最多 2 次 API 呼叫（GET + 有變化時 PUT），大幅降低 502 錯誤
+// v2.9：間隔 30 秒避免 rate limit；autoSyncLock 互斥鎖避免並行；手機切回畫面立即同步
+let autoSyncStarted = false;
+const AUTOSYNC_INTERVAL = 30000; // 30 秒自動同步一次（避免 rate limit）
+function startAutoSync() {
+  if (autoSyncStarted) return;
+  autoSyncStarted = true;
+  async function autoSyncOnce() {
+    if (autoSyncLock) return;
+    autoSyncLock = true;
+    try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) { updateSyncBadge('offline'); return; }
+      if (!getSyncKey()) { updateSyncBadge('offline'); return; }
+      updateSyncBadge('syncing');
+      // v2.11：只調 pullFromCloud — 內部會 merge 並在「有變化或有未推本機變更」時自動 push-back
+      // 不再先 pushToCloud — 那會多一次 PUT，容易觸發 extendsclass.com 502
+      await pullFromCloud(true);
+    } finally {
+      autoSyncLock = false;
+    }
+  }
+  setInterval(autoSyncOnce, AUTOSYNC_INTERVAL);
+  function onVisible() {
+    if (!getSyncKey() || document.hidden) return;
+    autoSyncOnce();
+  }
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('focus', onVisible);
+}
+
+// v2.13：清除所有同步狀態變數和計時器 — 斷開/重建/連接同步前必須呼叫
+// 解決「斷開同步後無法重新建立」的問題：syncInProgress 等變數卡住時，pushToCloud/pullFromCloud 會直接 return
+function clearAllSyncState() {
+  syncInProgress = false;
+  syncPending = false;
+  autoSyncLock = false;
+  pushFromPull = false;
+  pendingPull = false;
+  syncFailCount = 0;
+  lastSyncError = '';
+  syncRetryDelay = 10000;
+  if (syncRetryTimer) { clearTimeout(syncRetryTimer); syncRetryTimer = null; }
+  if (typeof syncTimer !== 'undefined' && syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+}
+
+function disconnectSync() {
+  if (!requireAdmin()) return;
+  showConfirm('斷開後此裝置不再自動同步（雲端資料仍會保留）。確定斷開？', function() {
+    clearAllSyncState();
+    clearSyncSha(); // v3.0：清除 SHA
+    setSyncKey(null);
+    loadSyncSettings();
+    updateSyncBadge('offline');
+    checkSyncWarning();
+    showToast('已斷開雲端同步', 'success');
+  }, '⚠️');
+}
+
+// v2.11：重置同步狀態 — 當同步卡在 error 不恢復時使用
+// 清除所有同步鎖、錯誤狀態、重試計時器，讓同步引擎從乾淨狀態重新開始
+function resetSyncState() {
+  if (!requireAdmin()) return;
+  clearAllSyncState();  // v2.13：使用共用函數
+  addSyncLog('RESET', 'ok', '同步狀態已重置', 0);
+  updateSyncBadge(getSyncKey() ? 'synced' : 'offline');
+  loadSyncSettings();
+  showToast('同步狀態已重置！正在重新同步...', 'success');
+  // 重置後立即觸發一次同步
+  if (getSyncKey()) setTimeout(function() { pullFromCloud(true); }, 500);
+}
+
+// v2.12：深度同步 — 強制完整重新拉取雲端資料
+// 與 manualSync 的差別：deepSync 先清除所有鎖定狀態（syncInProgress/autoSyncLock/pendingPull 等），
+// 確保即使同步引擎卡死也能強制執行。適用於「同步看起來在運作但資料不更新」的情況。
+async function deepSync() {
+  if (!requireAdmin()) return;
+  if (!getSyncKey()) { showToast('尚未啟用雲端同步', 'warning'); return; }
+  clearAllSyncState();  // v2.13：使用共用函數
+  showToast('正在深度同步（強制重新拉取）...', 'info');
+  updateSyncBadge('syncing');
+  addSyncLog('DEEP', 'ok', '開始深度同步', 0);
+  try {
+    await pullFromCloud(true);
+    refreshAllViews();
+    showToast('深度同步完成：' + new Date().toLocaleTimeString('zh-TW'), 'success');
+    addSyncLog('DEEP', 'ok', '深度同步完成', 200);
+  } catch(e) {
+    showToast('深度同步失敗：' + e.message, 'error');
+    addSyncLog('DEEP', 'err', e.message, 0);
+  }
+}
+
+function copySyncCode() {
+  const code = getSyncKey();
+  if (!code) return;
+  const input = document.getElementById('syncCodeDisplay');
+  input.select(); input.setSelectionRange(0, 99999);
+  try {
+    document.execCommand('copy');
+    showToast('同步碼已複製', 'success');
+  } catch(e) {
+    showToast('請手動複製同步碼', 'info');
+  }
+}
+
+function copySyncLink() {
+  const code = getSyncKey();
+  if (!code) return;
+  const url = location.origin + location.pathname + '?sync=' + code;
+  const ta = document.createElement('textarea');
+  ta.value = url;
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('同步連結已複製！在手機開啟此連結即自動連接', 'success');
+  } catch(e) {
+    showToast('請手動複製網址：' + url, 'info');
+  }
+  document.body.removeChild(ta);
+}
+
+// v2.8：手動測試雲端連線，幫助使用者診斷「同步失敗」原因
+async function testCloudConnection() {
+  if (!getSyncKey()) { showToast('尚未啟用同步', 'warning'); return; }
+  showToast('正在測試雲端連線...', 'info');
+  var key = getSyncKey();
+  try {
+    var ctrl = new AbortController();
+    var t = setTimeout(function() { ctrl.abort(); }, 45000);
+    // v3.0：測試 GitHub API 連線
+    var res = await fetch(GITHUB_API_BASE + key + '.json', {
+      signal: ctrl.signal,
+      mode: 'cors',
+      headers: {
+        'Authorization': 'token ' + getGitHubToken(),
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    clearTimeout(t);
+    if (res.ok) {
+      showToast('✅ 雲端連線正常！同步碼 ' + key + ' 有效', 'success');
+      lastSyncError = '';
+      updateSyncBadge('synced');
+      addSyncLog('TEST', 'ok', '連線正常', 200);
+    } else if (res.status === 404) {
+      showToast('❌ 同步碼不存在或已失效（404），請重新建立同步', 'error');
+      lastSyncError = '同步碼不存在或已失效';
+      addSyncLog('TEST', 'err', '同步碼不存在', 404);
+    } else {
+      showToast('⚠️ 雲端伺服器回應 ' + res.status, 'warning');
+      lastSyncError = '測試連線：伺服器回應 ' + res.status;
+      addSyncLog('TEST', 'err', '伺服器回應 ' + res.status, res.status);
+    }
+  } catch(e) {
+    let msg = e.name === 'AbortError' ? '連線逾時' : (e.message || '網路連線失敗');
+    showToast('❌ 連線測試失敗：' + msg + '。請確認手機網路正常，或嘗試切換 WiFi/瀏覽器', 'error');
+    lastSyncError = '測試連線失敗：' + msg;
+    addSyncLog('TEST', 'err', msg, 0);
+  }
+  loadSyncSettings();
+}
+
+// v3.1：Token 遮罩顯示（避免每次登入都要輸入，同時不讓旁人看到完整 Token）
+function maskToken(t) {
+  if (!t) return '';
+  if (t.length <= 10) return t.substring(0, 4) + '••••';
+  return t.substring(0, 4) + '••••••••' + t.substring(t.length - 4);
+}
+function tokenInputFilled() {
+  var input = document.getElementById('githubTokenInput');
+  if (!input) return false;
+  return !!(input.value && input.value.trim());
+}
+function fillTokenInput() {
+  var input = document.getElementById('githubTokenInput');
+  if (!input) return;
+  var t = getGitHubToken();
+  if (t) {
+    input.value = maskToken(t);
+    input.setAttribute('data-masked', '1');
+  } else {
+    input.value = '';
+    input.removeAttribute('data-masked');
+  }
+}
+// v3.1：顯示/隱藏 Token（切換遮罩與完整顯示）
+function toggleTokenVisibility() {
+  var input = document.getElementById('githubTokenInput');
+  var btn = document.getElementById('tokenToggleBtn');
+  if (!input) return;
+  if (input.getAttribute('data-masked') === '1') {
+    input.value = getGitHubToken();
+    input.removeAttribute('data-masked');
+    input.type = 'text';
+    if (btn) btn.textContent = '🙈';
+  } else {
+    fillTokenInput();
+    input.type = 'password';
+    if (btn) btn.textContent = '👁';
+  }
+}
+// v3.1：清除已儲存的 Token
+function clearGitHubTokenUI() {
+  showConfirm('確定要清除已儲存的 GitHub Token 嗎？清除後需要重新輸入才能同步。', function() {
+    setGitHubToken('');
+    fillTokenInput();
+    updateTokenStatus();
+    showToast('Token 已清除', 'info');
+  }, '🗑');
+}
+
+// v3.0：儲存 GitHub Token
+function saveGitHubTokenUI() {
+  var input = document.getElementById('githubTokenInput');
+  var raw = (input.value || '').trim();
+  // 若欄位目前是遮罩狀態且未修改 → 沿用已儲存的 token
+  if (input.getAttribute('data-masked') === '1' && raw === maskToken(getGitHubToken())) {
+    showToast('Token 已設定（未變更）', 'success');
+    loadSyncSettings();
+    return;
+  }
+  if (!raw) { showToast('請輸入 Token', 'error'); return; }
+  if (!raw.match(/^gh[pousr]_/)) { showToast('Token 格式不正確（應以 ghp_ 或 gho_ 開頭）', 'error'); return; }
+  setGitHubToken(raw);
+  fillTokenInput(); // v3.1：儲存後以遮罩顯示，不再清空 → 之後登入不需重新輸入
+  updateTokenStatus();
+  showToast('Token 已儲存並記住！現在可以建立或自動連接雲端同步', 'success');
+  // v3.1：儲存後若尚未連接，自動尋找雲端同步碼
+  if (!getSyncKey()) setTimeout(function() { autoFindSyncCode(true); }, 800);
+}
+function updateTokenStatus() {
+  var el = document.getElementById('tokenStatus');
+  if (!el) return;
+  if (getGitHubToken()) {
+    el.textContent = '✅ 已設定 ' + maskToken(getGitHubToken());
+    el.style.color = '#059669';
+  } else {
+    el.textContent = '❌ 尚未設定';
+    el.style.color = '#dc2626';
+  }
+}
+
+function loadSyncSettings() {
+  if (!requireAdmin()) return;
+  updateTokenStatus();
+  fillTokenInput(); // v3.1：已有 Token 時自動帶入欄位（遮罩顯示），不需每次輸入
+  const key = getSyncKey();
+  const statusEl = document.getElementById('syncStatusText');
+  const codeSection = document.getElementById('syncCodeSection');
+  const connectSection = document.getElementById('syncConnectSection');
+  if (key) {
+    let diag = '';
+    // v2.11：詳細同步狀態診斷
+    var syncState = [];
+    syncState.push('同步碼: ' + key);
+    syncState.push('進行中: ' + (syncInProgress ? '是' : '否'));
+    syncState.push('待推送: ' + (syncPending ? '是' : '否'));
+    syncState.push('互斥鎖: ' + (autoSyncLock ? '是' : '否'));
+    syncState.push('失敗計數: ' + syncFailCount);
+    syncState.push('重試延遲: ' + (syncRetryDelay / 1000) + 's');
+    if (typeof navigator !== 'undefined') syncState.push('網路: ' + (navigator.onLine ? '線上' : '離線'));
+    if (typeof navigator !== 'undefined' && !navigator.onLine) diag += '<br><span style="color:var(--danger);">⚠️ 裝置目前離線（無網路連線），同步已暫停。</span>';
+    else if (lastSyncError) diag += '<br><span style="color:var(--danger);">⚠️ 最後錯誤：' + esc(lastSyncError) + '</span>';
+    else diag += '<br><span style="color:var(--success);">✅ 網路正常，自動同步運作中</span>';
+    diag += '<br><span style="color:var(--text-secondary);font-size:11px;font-family:monospace;">[' + syncState.join(' | ') + ']</span>';
+    statusEl.innerHTML = '<strong style="color:var(--success)">✅ 雲端同步已啟用（自動同步中）</strong>' +
+      '<br><span style="color:var(--text-secondary);font-size:12px;">每 30 秒自動同步一次；切回此頁面時也會立即同步。' +
+      '<br>最後同步：' + esc(db._last_sync || '尚未同步') + ' · 資料大小：' + getDbSizeKB() + ' KB' + diag + '</span>' +
+      '<br><span style="color:var(--text-secondary);font-size:11px;margin-top:4px;display:block;">💡 手機同步不正常？請在手機瀏覽器「清除快取」或長按重新整理按鈕選擇「強制重新載入」。</span>';
+    document.getElementById('syncCodeDisplay').value = key;
+    codeSection.style.display = '';
+    connectSection.style.display = 'none';
+  } else {
+    statusEl.innerHTML = '<span style="color:var(--text-secondary);">尚未啟用雲端同步 — 資料目前只存在此瀏覽器，<strong>換裝置會重新開始</strong>。建議立即建立同步。</span>';
+    codeSection.style.display = 'none';
+    connectSection.style.display = '';
+  }
+  // v2.7：同步設定變更後，更新徽章和警告橫幅
+  updateSyncBadge(key ? 'synced' : 'offline');
+  checkSyncWarning();
+  // v2.9：顯示同步日誌（調試用，只顯示最近 20 筆）
+  var logSection = document.getElementById('syncLogSection');
+  var logBox = document.getElementById('syncLogBox');
+  if (logSection && logBox) {
+    if (key && syncLog.length) {
+      logSection.style.display = '';
+      logBox.innerHTML = getSyncLogHTML();
+    } else {
+      logSection.style.display = 'none';
+    }
+  }
+  // v3.1：未連接同步但有 Token 時，自動靜默搜尋雲端同步碼並連接（免手動輸入）
+  if (!key && getGitHubToken()) autoFindSyncCode(true);
+}
+
+// v3.1：自動尋找雲端同步碼並連接（透過 GitHub API 列出 sync/ 目錄）
+var _autoFindInProgress = false;
+var _lastAutoFindAt = 0;
+async function autoFindSyncCode(silent) {
+  if (!requireAdmin()) return;
+  if (_autoFindInProgress) return;
+  if (!getGitHubToken()) {
+    if (!silent) { showToast('請先設定 GitHub Token', 'warning'); document.getElementById('githubTokenInput').focus(); }
+    return;
+  }
+  // 靜默模式 30 秒內不重複嘗試（避免每次進設定頁都打 API）
+  var now = Date.now();
+  if (silent && _lastAutoFindAt && (now - _lastAutoFindAt) < 30000) return;
+  _lastAutoFindAt = now;
+  _autoFindInProgress = true;
+  var btn = document.getElementById('autoFindBtn');
+  if (btn && !silent) btn.disabled = true;
+  if (!silent) showToast('正在搜尋雲端同步碼...', 'info');
+  try {
+    var ctrl = new AbortController();
+    var t = setTimeout(function() { ctrl.abort(); }, 20000);
+    var res = await fetch(GITHUB_API_BASE, {
+      signal: ctrl.signal,
+      mode: 'cors',
+      headers: {
+        'Authorization': 'token ' + getGitHubToken(),
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    clearTimeout(t);
+    if (res.status === 404) {
+      if (!silent) showToast('雲端還沒有任何同步碼，請先按「建立雲端同步」', 'warning');
+      return;
+    }
+    if (!res.ok) {
+      if (!silent) showToast('搜尋失敗（' + res.status + '），請檢查 Token 是否有效', 'error');
+      return;
+    }
+    var files = await res.json();
+    if (!Array.isArray(files)) {
+      if (!silent) showToast('雲端回應格式異常', 'error');
+      return;
+    }
+    var jsonFiles = files.filter(function(f) { return f.name && /\.json$/.test(f.name); });
+    if (!jsonFiles.length) {
+      if (!silent) showToast('雲端還沒有同步資料，請先按「建立雲端同步」', 'warning');
+      return;
+    }
+    // v3.2：GitHub API 目錄列表「不包含 updated_at 欄位」，
+    // 必須逐一 GET 檔案內容比較 JSON 中的 _last_sync，才能找到真正最新的同步碼
+    // （舊版用 f.updated_at 排序，但該欄位不存在 → 排序無效 → 永遠選字母序第一個）
+    var fileInfos = await Promise.all(jsonFiles.map(async function(f) {
+      try {
+        var r2 = await fetch(f.url, {
+          mode: 'cors',
+          headers: {
+            'Authorization': 'token ' + getGitHubToken(),
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        });
+        if (!r2.ok) return { name: f.name, lastSync: '', empCount: 0 };
+        var d2 = await r2.json();
+        var content = JSON.parse(decodeBase64(d2.content.replace(/\n/g, '')));
+        return {
+          name: f.name,
+          lastSync: content._last_sync || '',
+          empCount: (content.employees || []).length
+        };
+      } catch(e2) {
+        return { name: f.name, lastSync: '', empCount: 0 };
+      }
+    }));
+    // v3.3：先依 _last_sync 降序排列
+    fileInfos.sort(function(a, b) {
+      return (b.lastSync || '').localeCompare(a.lastSync || '');
+    });
+    // v3.3：員工數量保護 — 如果時間戳最新的檔案員工數遠少於其他檔案，
+    // 可能是手機等新設備誤建的空同步檔案，應優先選員工數最多的
+    // 規則：如果最新檔案的員工數 < 其他檔案的最大員工數的一半，改選員工數最多的
+    var maxEmpCount = 0;
+    for (var i = 0; i < fileInfos.length; i++) {
+      if (fileInfos[i].empCount > maxEmpCount) maxEmpCount = fileInfos[i].empCount;
+    }
+    var pickedIndex = 0;
+    if (fileInfos.length > 1 && fileInfos[0].empCount < maxEmpCount / 2 && maxEmpCount >= 2) {
+      // 最新檔案員工數太少，找員工數最多的
+      for (var j = 0; j < fileInfos.length; j++) {
+        if (fileInfos[j].empCount === maxEmpCount) { pickedIndex = j; break; }
+      }
+      addSyncLog('AUTOFIND', 'warn', '時間戳最新的 ' + fileInfos[0].name + ' 只有 ' + fileInfos[0].empCount + ' 名員工，改選 ' + fileInfos[pickedIndex].name + '（' + maxEmpCount + ' 名員工）', 0);
+    }
+    var code = fileInfos[pickedIndex].name.replace(/\.json$/, '');
+    if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) {
+      if (!silent) showToast('偵測到的同步碼格式異常', 'error');
+      return;
+    }
+    addSyncLog('AUTOFIND', 'ok', '找到同步碼 ' + code + '（員工 ' + (fileInfos[pickedIndex].empCount || 0) + ' 人，同步 ' + (fileInfos[pickedIndex].lastSync || '未知') + '）', 0);
+    // v3.2：若目前同步碼與找到的相同 → 已連接，不需重複
+    if (getSyncKey() === code) {
+      if (!silent) showToast('已連接同步碼：' + code, 'success');
+      loadSyncSettings();
+      return;
+    }
+    // v3.2：自動填入並連接（包含從舊/已刪除同步碼切換到新同步碼的情況）
+    document.getElementById('syncCodeInput').value = code;
+    if (!silent) showToast('🔗 找到同步碼 ' + code + '（' + (fileInfos[pickedIndex].empCount || 0) + ' 名員工），正在自動連接...', 'success');
+    // 若已有不同的同步碼：靜默模式直接切換，非靜默模式走 connectCloudSync（有確認對話框）
+    if (getSyncKey() && getSyncKey() !== code && silent) {
+      doConnect(code);
+    } else {
+      connectCloudSync();
+    }
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      if (!silent) showToast('搜尋逾時，請檢查網路', 'error');
+    } else if (!silent) {
+      showToast('搜尋失敗：' + (e.message || '網路錯誤'), 'error');
+    }
+  } finally {
+    _autoFindInProgress = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ===== 同步狀態徽章（v2.7）=====
+// 在 topbar 永遠顯示同步狀態，讓使用者不管停在哪一頁都能知道：
+// ✅已同步 / 🔄同步中 / ⚠️未連接 / ❌同步失敗
+// 點擊徽章 → 立即同步（有同步碼）或跳到設定頁（無同步碼）
+function updateSyncBadge(state) {
+  const badge = document.getElementById('syncBadge');
+  const text = document.getElementById('syncBadgeText');
+  if (!badge || !text) return;
+  badge.className = 'sync-badge ' + state;
+  switch(state) {
+    case 'synced':  text.textContent = '已同步'; badge.title = '點擊立即同步'; break;
+    case 'syncing': text.textContent = '同步中…'; badge.title = '正在同步中...'; break;
+    case 'offline': text.textContent = '未啟用同步'; badge.title = '尚未啟用雲端同步，資料不會跨裝置連動'; break;
+    case 'error':   text.textContent = '同步失敗'; badge.title = lastSyncError || '同步發生錯誤，請點擊重試或檢查網路'; break;
+  }
+}
+function quickSync() {
+  if (!currentUser) return;
+  if (!getSyncKey()) {
+    showToast('尚未啟用雲端同步，正在跳轉到設定頁…', 'warning');
+    if (currentUser.role === 'admin') switchPage('admin-settings');
+    return;
+  }
+  if (currentUser.role === 'admin') manualSync();
+  else { updateSyncBadge('syncing'); pullFromCloud(true).then(function(){ updateSyncBadge('synced'); }).catch(function(){ updateSyncBadge('error'); }); }
+}
+
+// ===== 未啟用同步的醒目提示（v2.7）=====
+// 新網址首次使用（localStorage 空、無 syncKey）時，在主畫面頂端顯示醒目黃色橫幅
+function checkSyncWarning() {
+  const banner = document.getElementById('syncWarningBanner');
+  if (!banner) return;
+  if (getSyncKey()) {
+    banner.style.display = 'none';
+  } else {
+    banner.style.display = 'flex';
+  }
+}
+
+// ===== Navigation =====
+const ADMIN_PAGES = ['admin-stats', 'admin-employees', 'admin-attendance', 'admin-leave', 'admin-wifi', 'admin-settings'];
+
+// 切換頁面時順帶拉取雲端最新資料（節流，避免頻繁切頁狂打 API）
+// 讓使用者切到「員工」「考勤」等頁面時，能立刻看到其他裝置剛新增/打卡的內容
+var PULL_NAV_THROTTLE = 8000; // 切頁拉取節流毫秒數（可調整）
+let lastPagePull = 0;
+function maybePullOnNavigate() {
+  if (!getSyncKey()) return;
+  const now = Date.now();
+  if (now - lastPagePull < PULL_NAV_THROTTLE) return;
+  lastPagePull = now;
+  pullFromCloud(true);
+}
+
+function switchPage(pageName) {
+  if (ADMIN_PAGES.includes(pageName) && (!currentUser || currentUser.role !== 'admin')) {
+    showToast('權限不足！此頁面僅限管理員使用。', 'error');
+    pageName = 'clock';
+  }
+  maybePullOnNavigate();   // 切頁即拉取最新（有同步碼才動作，節流保護）
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  const pageEl = document.getElementById('page-' + pageName);
+  if (pageEl) pageEl.classList.add('active');
+  document.querySelectorAll('[data-page]').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('[data-page="' + pageName + '"]').forEach(function(t) { t.classList.add('active'); });
+  if (pageName === 'clock') loadClockStatus();
+  if (pageName === 'history') loadHistory();
+  if (pageName === 'leave') loadMyLeaves();
+  if (pageName === 'admin-stats') loadAdminStats();
+  if (pageName === 'admin-employees') loadEmployees();
+  if (pageName === 'admin-attendance') loadAdminAttendance();
+  if (pageName === 'admin-leave') loadAdminLeaves();
+  if (pageName === 'admin-wifi') loadWifiSettings();
+  if (pageName === 'admin-settings') { loadScheduleSettings(); loadSyncSettings(); }
+}
+
+document.querySelectorAll('[data-page]').forEach(function(el) {
+  el.addEventListener('click', function(e) { switchPage(e.currentTarget.dataset.page); });
+});
+
+// ===== Init =====
+(function init() {
+  // Cloud sync: auto-connect when opened via a shared ?sync=XXXX link (cross-device)
+  let syncFlowPending = false; // true = 等待使用者確認是否切換同步碼
+  const urlSync = new URLSearchParams(location.search).get('sync');
+  if (urlSync && /^[A-Za-z0-9_-]{4,64}$/.test(urlSync)) {
+    const existingKey = getSyncKey();
+    if (existingKey && existingKey !== urlSync) {
+      // 裝置已連接另一個同步空間 → 先詢問，避免誤連到別人的資料庫
+      syncFlowPending = true;
+      showConfirm('此裝置已連接另一個同步碼。要改用連結中的同步碼，並與目前資料合併嗎？（本機資料不會遺失）', function() {
+        setSyncKey(urlSync);
+        history.replaceState(null, '', location.pathname);
+        showToast('已切換同步碼，正在合併雲端資料...', 'info');
+        doInitialSync();
+      }, '🔄');
+    } else {
+      setSyncKey(urlSync);
+      history.replaceState(null, '', location.pathname); // clean URL
+      showToast('偵測到同步連結，正在連接雲端...', 'info');
+    }
+  }
+
+  const session = checkSession();
+  if (session) {
+    const user = db.employees.find(function(e) { return e.employee_id === session.employeeId && e.active === 1; });
+    if (user) {
+      currentUser = { id: user.id, employeeId: user.employee_id, name: user.name, role: user.role, department: user.department };
+      saveSession(); // Refresh timestamp
+      showDashboard();
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
+  }
+
+  // 啟動後從雲端拉取最新資料 → 合併 → 回推 → 自動重整所有項目畫面（靜默：失敗不彈窗）
+  function doInitialSync() {
+    setTimeout(function() {
+      pullFromCloud(true); // 內部會依變更情況刷新全部項目（refreshAllViews）或目前頁面
+    }, 600);
+  }
+
+  if (getSyncKey() && !syncFlowPending) doInitialSync();
+  startAutoSync(); // 開啟自動同步引擎：每 30 秒 + 手機切回畫面時自動同步
+  // v2.7：初始同步徽章狀態
+  updateSyncBadge(getSyncKey() ? 'synced' : 'offline');
+  checkSyncWarning();
+})();
+</script>
+</body>
+</html>
