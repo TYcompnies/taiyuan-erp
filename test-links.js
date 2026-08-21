@@ -312,7 +312,7 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   // 先建一笔费用用于过账回写验证
   await gotoHash('#/expenses/create');
   await page.locator('[name=type]').selectOption('物流费');
-  await page.locator('[name=account]').selectOption('销售费用-物流');
+  await page.locator('[name=account]').selectOption('销售费用');
   await page.locator('[name=amount]').fill('88');
   await page.locator('button[type=submit]').click();
   await page.waitForTimeout(900);
@@ -327,7 +327,7 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   const statusDisabled = await page.locator('[name=status]').isDisabled().catch(() => false);
   check(statusDisabled, '传票表单状态下拉已禁用（只能保存未过账）');
   const line1 = page.locator('#voucherLines tbody tr').nth(0);
-  await line1.locator('[name="account[]"]').selectOption('销售费用-物流');
+  await line1.locator('[name="account[]"]').selectOption('销售费用');
   await line1.locator('[name="debit[]"]').fill('88');
   const line2 = page.locator('#voucherLines tbody tr').nth(1);
   await line2.locator('[name="account[]"]').selectOption('银行存款');
@@ -336,7 +336,7 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   await page.locator('button[type=submit]').click();
   await page.waitForTimeout(900);
   const vc = await db(() => {
-    const v = DB.list('vouchers')[0];
+    const v = DB.list('vouchers').filter(x => x.status === '未过账').sort((a, b) => b.no.localeCompare(a.no))[0];
     return v ? { id: v.id, no: v.no, status: v.status } : null;
   });
   check(!!vc && vc.status === '未过账', `传票保存后强制未过账 (${vc ? vc.no : '-'} 状态=${vc ? vc.status : ''})`);
@@ -346,11 +346,11 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   await page.locator(`tr:has-text("${vc.no}") button:has-text("过账")`).click();
   await page.waitForTimeout(300);
   await confirmOk();
-  const postInfo = await db(id => {
-    const v = DB.get('vouchers', id);
-    const e = DB.list('expenses')[0];
-    return { vStatus: v.status, exVoucherNo: e.voucher_no };
-  }, vc.id);
+  const postInfo = await db(arg => {
+    const v = DB.get('vouchers', arg.vid);
+    const e = DB.find('expenses', x => x.no === arg.no);
+    return { vStatus: v.status, exVoucherNo: e ? e.voucher_no : null };
+  }, { vid: vc.id, no: ex.no });
   check(postInfo.vStatus === '已过账', '传票已过账');
   check(postInfo.exVoucherNo === vc.no, `过账后费用传票号回写 (${postInfo.exVoucherNo})`);
 

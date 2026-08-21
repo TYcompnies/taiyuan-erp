@@ -411,7 +411,7 @@ Pages.doShip = function (id) {
 
     // 建立出货单
     const no = nextDocNo("SH", "shipments");
-    DB.insert("shipments", {
+    const shipment = DB.insert("shipments", {
         no, sales_order_id: o.id, order_no: o.no, warehouse_id: whId,
         ship_date: Utils.today(), logistics_method: log, shipment_no: shipNo,
         recipient_name: o.recipient_name, recipient_phone: o.recipient_phone,
@@ -419,6 +419,10 @@ Pages.doShip = function (id) {
         lines: o.lines.map(l => Object.assign({}, l)),
         remark: "", created_by: DB.currentUser().name
     });
+    // 会计联动：自动生成出货收入/成本复式传票
+    if (typeof ACCT !== "undefined" && ACCT && ACCT.onShipment) {
+        try { ACCT.onShipment(shipment, o); } catch (e) { }
+    }
 
     // 更新订单状态
     DB.update("sales_orders", o.id, { status: "shipped", logistics_method: log, shipment_no: shipNo });
@@ -887,6 +891,10 @@ Pages.deleteShipment = function (id) {
         });
         DB.remove("shipments", id);
         if (o) DB.update("sales_orders", o.id, { status: "draft", logistics_method: "", shipment_no: "" });
+        // 会计联动：作废该出货单对应的自动传票（收入/成本分录随业务回退）
+        if (typeof ACCT !== "undefined" && ACCT && ACCT.voidVouchers) {
+            try { ACCT.voidVouchers("SHIP:" + id); } catch (e) { }
+        }
         toast("出货单已删除，库存已回冲", "success");
         render();
     }, "删除出货单");
@@ -1013,6 +1021,10 @@ Pages.receivePO = function (id) {
             DB.addStock(o.warehouse_id, l.item_id, Utils.num(l.qty) * rate);
         });
         DB.update("purchase_orders", o.id, { status: "received" });
+        // 会计联动：自动生成进货/应付复式传票
+        if (typeof ACCT !== "undefined" && ACCT && ACCT.onPOReceive) {
+            try { ACCT.onPOReceive(o); } catch (e) { }
+        }
         toast(`采购单 ${o.no} 已进货入库`, "success");
         render();
     }, "进货入库");
@@ -1265,6 +1277,10 @@ Pages.deleteAdj = function (id) {
     confirmModal("确定要删除这笔库存调整记录吗？删除后库存将按原数量反向冲销。", () => {
         a.lines.forEach(l => { DB.addStock(a.warehouse_id, l.item_id, -Utils.num(l.qty)); });
         DB.remove("inventory_adjusts", id);
+        // 会计联动：作废该调整单对应的自动传票（库存商品/待处理财产损溢分录随业务回退）
+        if (typeof ACCT !== "undefined" && ACCT && ACCT.voidVouchers) {
+            try { ACCT.voidVouchers("ADJ:" + id); } catch (e) { }
+        }
         toast("已删除，库存已回冲", "success");
         render();
     });
@@ -1388,11 +1404,15 @@ Pages.saveAdj = function (e) {
     if (!lines.length) { toast("请至少新增一笔有效的调整明细", "error"); return; }
 
     lines.forEach(l => { DB.addStock(data.warehouse_id, l.item_id, l.qty); });
-    DB.insert("inventory_adjusts", {
+    const adj = DB.insert("inventory_adjusts", {
         no: nextDocNo("ADJ", "inventory_adjusts"), warehouse_id: data.warehouse_id,
         type: data.type, source_type: data.source_type || "", source_no: data.source_no || "",
         lines, remark: data.remark || "", created_by: DB.currentUser().name
     });
+    // 会计联动：自动生成库存调整传票（库存商品 vs 待处理财产损溢）
+    if (typeof ACCT !== "undefined" && ACCT && ACCT.onAdjust) {
+        try { ACCT.onAdjust(adj); } catch (e) { }
+    }
     toast("库存调整已保存并更新库存", "success");
     setTimeout(() => { location.hash = "#/inventory/inventory_adjust"; }, 300);
 };
@@ -1580,7 +1600,7 @@ Pages.saveSalesReturn = function (e) {
             DB.addStock(data.warehouse_id, it.id, Utils.num(l.qty) * rate);
         });
     }
-    DB.insert("sales_returns", {
+    const sr = DB.insert("sales_returns", {
         no: nextDocNo("SR", "sales_returns", data.return_date), sales_order_id: so.id, order_no: so.no,
         customer_id: so.customer_id, type: data.type, return_date: data.return_date,
         warehouse_id: data.warehouse_id, lines, untaxed_amount: untaxedAmount, tax_amount: taxAmount,
@@ -1588,6 +1608,10 @@ Pages.saveSalesReturn = function (e) {
         cost_reversal: Utils.round(costReversal), remark: data.remark || "",
         created_by: DB.currentUser().name
     });
+    // 会计联动：自动生成销货退回传票（冲收入/冲应收/回冲成本与库存）
+    if (typeof ACCT !== "undefined" && ACCT && ACCT.onSalesReturn) {
+        try { ACCT.onSalesReturn(sr, so); } catch (e) { }
+    }
     // 冲减应收时，同步回写订单收款状态（未收重新计算，已收超限则退回未收状态）
     if (data.offset_receivable === "1") {
         const received = Utils.num(so.received_amount);
@@ -1766,13 +1790,17 @@ Pages.savePurchaseReturn = function (e) {
             DB.addStock(po.warehouse_id, it.id, -Utils.num(l.qty) * rate);
         });
     }
-    DB.insert("purchase_returns", {
+    const pr = DB.insert("purchase_returns", {
         no: nextDocNo("PR", "purchase_returns", data.return_date), purchase_order_id: po.id, order_no: po.no,
         supplier_id: po.supplier_id, type: data.type, return_date: data.return_date,
         warehouse_id: po.warehouse_id, lines, amount: total,
         offset_payable: data.offset_payable === "1", remark: data.remark || "",
         created_by: DB.currentUser().name
     });
+    // 会计联动：自动生成采购退回传票（冲应付/冲库存）
+    if (typeof ACCT !== "undefined" && ACCT && ACCT.onPurchaseReturn) {
+        try { ACCT.onPurchaseReturn(pr, po); } catch (e) { }
+    }
     // 冲减应付时，同步回写采购单付款状态（已付重新计算，超限则退回未付状态）
     if (data.offset_payable === "1") {
         const paid = Utils.num(po.paid_amount);

@@ -157,7 +157,7 @@ function badge(status) {
         "已收款": "green", "未收款": "orange", "部分收款": "blue",
         "已付清": "green", "部分付款": "orange", "未付款": "red",
         "已开": "green", "未开": "gray", "作废": "red", "折让": "purple", "退回": "red",
-        "已过账": "green", "未过账": "orange",
+        "已过账": "green", "未过账": "orange", "已作废": "gray",
         "启用": "green", "停用": "red"
     };
     const c = map[status] || "gray";
@@ -198,6 +198,10 @@ const MENU = [
             { code: "accounts_payable", label: "应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
             { code: "expenses", label: "费用支出", hash: "#/expenses", perm: "finance.expense" },
             { code: "vouchers", label: "传票作业", hash: "#/accounting/vouchers", perm: "finance.voucher" },
+            { code: "chart_accounts", label: "会计科目", hash: "#/accounting/accounts", perm: "finance.account" },
+            { code: "general_ledger", label: "总分类账", hash: "#/accounting/general-ledger", perm: "finance.ledger" },
+            { code: "trial_balance", label: "试算表", hash: "#/accounting/trial-balance", perm: "finance.balance" },
+            { code: "balance_sheet", label: "资产负债表", hash: "#/accounting/balance-sheet", perm: "finance.balance" },
             { code: "income_statement", label: "损益表", hash: "#/accounting/income-statement", perm: "finance.income" }
         ]
     },
@@ -225,6 +229,7 @@ const MENU = [
         group: "系统设置", key: "system", items: [
             { code: "migration_center", label: "Excel 导入中心", hash: "#/tools/migration-center", perm: "system.migration" },
             { code: "system_backup", label: "系统备份", hash: "#/tools/system-backup", perm: "system.backup" },
+            { code: "cloud_sync", label: "云端同步", hash: "#/tools/cloud-sync", perm: "system.sync" },
             { code: "users", label: "用户管理", hash: "#/users", perm: "system.user" },
             { code: "roles", label: "角色管理", hash: "#/roles", perm: "system.role" },
             { code: "permissions", label: "权限管理", hash: "#/permissions", perm: "system.permission" }
@@ -600,6 +605,10 @@ function render() {
     document.body.className = localStorage.getItem("taiyuan_erp_sidebar") === "1" ? "sidebar-collapsed" : "";
     document.body.classList.toggle("dark", localStorage.getItem("taiyuan_erp_dark") === "1");
     route(hash);
+    // 云端同步：登录进入系统后启动自动同步（首拉 + 定时）
+    if (typeof CloudSync !== "undefined" && CloudSync && CloudSync.startAuto) {
+        try { CloudSync.startAuto(); } catch (e) { /* 同步异常不影响使用 */ }
+    }
 }
 
 /* ---------------- 路由 ---------------- */
@@ -629,6 +638,12 @@ function route(hash) {
         "accounting/vouchers": () => Pages.vouchers(),
         "accounting/vouchers/create": () => Pages.voucherForm(),
         "accounting/income-statement": () => Pages.incomeStatement(),
+        "accounting/accounts": () => Pages.chartAccounts(),
+        "accounting/accounts/create": () => Pages.chartAccountForm(),
+        "accounting/general-ledger": () => Pages.generalLedger(),
+        "accounting/trial-balance": () => Pages.trialBalance(),
+        "accounting/balance-sheet": () => Pages.balanceSheet(),
+        "tools/cloud-sync": () => Pages.cloudSync(),
         "master/items": () => Pages.items(),
         "master/items/create": () => Pages.itemForm(),
         "master/customers": () => Pages.customers(),
@@ -680,7 +695,8 @@ function route(hash) {
             "master/suppliers": () => Pages.supplierForm(id),
             "master/warehouses": () => Pages.warehouseForm(id),
             "users": () => Pages.userForm(id),
-            "roles": () => Pages.roleForm(id)
+            "roles": () => Pages.roleForm(id),
+            "accounting/accounts": () => Pages.chartAccountForm(id)
         };
         if (map[base]) {
             const perm = permForPath(base);

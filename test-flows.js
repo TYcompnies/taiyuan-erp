@@ -200,7 +200,7 @@ function check(cond, msg) {
   const exBefore = (await db(() => DB.list('expenses').length));
   await gotoHash('#/expenses/create');
   await page.locator('[name=type]').selectOption('办公费');
-  await page.locator('[name=account]').selectOption('管理费用-办公');
+  await page.locator('[name=account]').selectOption('管理费用');
   await page.locator('[name=amount]').fill('666.66');
   await page.locator('button[type=submit]').click();
   await page.waitForTimeout(900);

@@ -116,6 +116,10 @@ Pages.doSavePayment = function (id) {
         payment_method: method || o.payment_method || "银行转账",
         payment_date: pDate
     });
+    // 会计联动：自动产生已过账收款传票（借货币资金/贷应收账款，幂等）
+    if (typeof ACCT !== "undefined" && ACCT.onReceipt) {
+        try { ACCT.onReceipt(o, amt, pDate, method); } catch (e) { /* 会计联动失败不阻断收款 */ }
+    }
     document.querySelector(".modal-mask")?.remove();
     toast("收款登记成功", "success");
     render();
@@ -230,6 +234,10 @@ Pages.doSavePayPO = function (id) {
         payment_method: method || o.payment_method || "银行转账",
         payment_date: pDate
     });
+    // 会计联动：自动产生已过账付款传票（借应付账款/贷货币资金，幂等）
+    if (typeof ACCT !== "undefined" && ACCT.onPayment) {
+        try { ACCT.onPayment(o, amt, pDate, method); } catch (e) { /* 会计联动失败不阻断付款 */ }
+    }
     document.querySelector(".modal-mask")?.remove();
     toast("付款登记成功", "success");
     render();
@@ -302,13 +310,7 @@ Pages.expenseForm = function () {
                     <option>设备购置</option><option>其他</option>
                 </select></div>
             <div class="form-item"><label>会计科目<b>*</b></label>
-                <select name="account" required>
-                    <option value="">请选择</option>
-                    <option>管理费用-房租</option><option>管理费用-水电</option><option>管理费用-办公</option>
-                    <option>销售费用-物流</option><option>销售费用-平台费</option><option>销售费用-广告</option>
-                    <option>销售费用-包装</option><option>管理费用-工资</option><option>管理费用-差旅</option>
-                    <option>营业外支出</option><option>其他费用</option>
-                </select></div>
+                <select name="account" required>${chartAccountOptions("", ["损益"])}</select></div>
             <div class="form-item"><label>金额<b>*</b></label><input type="number" step="0.01" name="amount" required placeholder="0.00"></div>
             <div class="form-item"><label>付款方式</label><select name="payment_method">${feeMethodOptions("银行转账")}</select></div>
             <div class="form-item wide"><label>备注</label><textarea name="remark" placeholder="费用说明"></textarea></div>
@@ -329,12 +331,16 @@ Pages.saveExpense = function (e) {
     if (Utils.num(data.amount) <= 0) { toast("请输入有效金额", "error"); return; }
     if (!data.type) { toast("请选择费用类型", "error"); return; }
     if (!data.account) { toast("请选择会计科目", "error"); return; }
-    DB.insert("expenses", {
+    const rec = DB.insert("expenses", {
         no: nextDocNo("EX", "expenses"), date: data.date, type: data.type,
         account: data.account, amount: Utils.round(data.amount),
         payment_method: data.payment_method, remark: data.remark || "",
         voucher_no: "", created_by: DB.currentUser().name
     });
+    // 会计联动：自动产生已过账费用传票（借费用科目/贷货币资金，幂等）
+    if (typeof ACCT !== "undefined" && ACCT.onExpense) {
+        try { ACCT.onExpense(rec); } catch (e) { /* 会计联动失败不阻断费用保存 */ }
+    }
     toast("费用支出已保存", "success");
     setTimeout(() => { location.hash = "#/expenses"; }, 300);
 };
@@ -349,7 +355,7 @@ Pages.vouchers = function () {
         const credits = v.lines.filter(l => Utils.num(l.credit) > 0);
         const amount = v.lines.reduce((s, l) => s + Utils.num(l.debit), 0);
         return `<tr>
-            <td><b>${h(v.no)}</b></td>
+            <td><b>${h(v.no)}</b>${v.auto ? ` <span class="badge teal" title="系统自动产生">自动</span>` : ""}</td>
             <td>${h(v.date)}</td>
             <td><span class="badge gray">${h(v.source)}</span> ${h(v.source_no || "")}</td>
             <td>${h(v.counterparty || "-")}</td>
@@ -358,24 +364,29 @@ Pages.vouchers = function () {
             <td class="num">${fmt(amount)}</td>
             <td>${v.balanced ? badge("平衡") : badge("不平衡")}</td>
             <td>${h(v.payment_method || "-")}</td>
-            <td>${v.status === "已过账" ? badge("已过账") : badge("未过账")}</td>
+            <td>${v.status === "已过账" ? badge("已过账") : v.status === "已作废" ? badge("已作废") : badge("未过账")}</td>
             <td>${h(v.created_by)}</td>
             <td class="action-col">
                 ${v.status === "未过账" ? `<button class="link-btn" onclick="Pages.postVoucher('${v.id}')">过账</button>` : ""}
-                <button class="link-btn danger" onclick="Pages.deleteVoucher('${v.id}')">删除</button>
+                ${v.status !== "已作废" ? `<button class="link-btn danger" onclick="Pages.deleteVoucher('${v.id}')">删除</button>` : ""}
             </td>
         </tr>`;
     }).join("");
     const unposted = list.filter(v => v.status === "未过账").length;
+    const voided = list.filter(v => v.status === "已作废").length;
 
     const content = `
     <div class="page-head">
-        <div><h1>传票作业</h1><p>收付款与费用切传票，过账后进入财务报表。</p></div>
-        <div class="head-actions">${can("finance.voucher") ? `<a class="btn primary" href="#/accounting/vouchers/create">+ 新增传票</a>` : ""}</div>
+        <div><h1>传票作业</h1><p>收付款与费用自动切传票（已过账）；也可手动新增传票。过账后进入总分类账与财务报表。</p></div>
+        <div class="head-actions">
+            ${can("finance.voucher") ? `<button class="btn ghost" onclick="Pages.syncAccounting()">业务数据同步传票</button>` : ""}
+            ${can("finance.voucher") ? `<a class="btn primary" href="#/accounting/vouchers/create">+ 新增传票</a>` : ""}
+        </div>
     </div>
     <div class="kpi-grid">
         <div class="kpi-card"><span>未过账传票</span><strong style="color:var(--orange)">${unposted}</strong><p>需处理并过账</p></div>
-        <div class="kpi-card"><span>传票总数</span><strong>${list.length}</strong><p>全部传票笔数</p></div>
+        <div class="kpi-card"><span>传票总数</span><strong>${list.length}</strong><p>全部传票笔数（含作废 ${voided}）</p></div>
+        <div class="kpi-card"><span>自动传票</span><strong>${list.filter(v => v.auto && v.status === "已过账").length}</strong><p>业务单据自动产生</p></div>
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
@@ -386,9 +397,19 @@ Pages.vouchers = function () {
     renderShell("vouchers", content, "首页 / 账款财务 / 传票作业");
 };
 
+/* 业务数据同步传票：为既有/缺传票的业务单据补生成会计传票（幂等） */
+Pages.syncAccounting = function () {
+    confirmModal("将扫描全部业务单据（出货/进货/收款/付款/费用/退回/库存调整），为缺少传票的事件自动补生成已过账传票，并对齐应收/应付/库存科目余额。可重复执行。确定继续吗？", () => {
+        if (typeof ACCT === "undefined") { toast("会计模块未加载", "error"); return; }
+        ACCT.backfill(true);
+        render();
+    }, "业务数据同步传票");
+};
+
 Pages.postVoucher = function (id) {
     const v = DB.get("vouchers", id);
     if (!v) return;
+    if (v.status === "已作废") { toast("该传票已作废，无法过账", "error"); return; }
     if (!v.balanced) { toast("该传票借贷不平衡，无法过账", "error"); return; }
     if (v.status === "已过账") { toast("该传票已过账，请勿重复操作", "error"); return; }
     confirmModal(`确定要过账传票 ${v.no} 吗？过账后不可修改。`, () => {
@@ -463,13 +484,7 @@ Pages.addVoucherLine = function () {
     const tbody = document.querySelector("#voucherLines tbody");
     if (!tbody) return;
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><select name="account[]" required style="min-width:220px">
-            <option value="">请选择科目</option>
-            <option>应收账款</option><option>应付账款</option><option>银行存款</option><option>现金</option>
-            <option>主营业务收入</option><option>主营业务成本</option><option>应交税费-销项税</option><option>应交税费-进项税</option>
-            <option>销售费用-物流</option><option>销售费用-平台费</option><option>销售费用-广告</option><option>管理费用-房租</option>
-            <option>管理费用-水电</option><option>管理费用-办公</option><option>管理费用-工资</option><option>营业外支出</option><option>其他费用</option>
-        </select></td>
+    tr.innerHTML = `<td><select name="account[]" required style="min-width:220px">${chartAccountOptions("")}</select></td>
         <td><input type="number" step="0.01" name="debit[]" value="" style="width:130px" oninput="Pages.updateVoucherTotals()"></td>
         <td><input type="number" step="0.01" name="credit[]" value="" style="width:130px" oninput="Pages.updateVoucherTotals()"></td>
         <td class="action-col"><button class="link-btn danger" type="button" onclick="this.closest('tr').remove();Pages.updateVoucherTotals()">移除</button></td>`;
