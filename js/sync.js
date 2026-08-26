@@ -5,7 +5,7 @@
    - 传输格式：JSON → deflate 压缩 →（可选 AES-GCM 加密）→ base64
      标记：TY0: 明文 JSON ／ TY1: 压缩+base64 ／ TYE1: 加密(TY0/TY1)
    - 自动上传：DB.flush() 防抖 3 秒触发（仅 autoPush 开启时）
-   - 自动下载：render() 后首拉 + 每 15 秒轮询 + 切回窗口/标签即时拉取（仅 autoPull 开启时）
+   - 自动下载：render() 后首拉 + 每 12 秒轮询 + 切回窗口/标签即时拉取（仅 autoPull 开启时）
    - 同浏览器多标签页：通过 storage 事件即时同步，无需轮询
    - 下载覆盖本地前自动备份（localStorage，保留最近 5 份），确保原有资料不丢失
    ============================================================ */
@@ -17,7 +17,7 @@ const CloudSync = {
     DEVICE_KEY: "taiyuan_device_id_v1",
     MAX_TEXTDB_BYTES: 28000,   // textdb URL 安全上限（编码后字符数）
     BACKUP_KEEP: 5,
-    PULL_INTERVAL: 15000,
+    PULL_INTERVAL: 12000,
 
     // 内置默认同步配置：任何设备/浏览器/网域首次打开时自动启用，
     // 无需手动输入同步码或口令即可跨设备自动同步（可随时在云端同步页修改并保存覆盖）。
@@ -71,6 +71,22 @@ const CloudSync = {
         if (c.provider === "textdb") return !!c.code;
         if (c.provider === "github") return !!c.ghToken && !!c.ghRepo;
         return false;
+    },
+    // 旧版 GitHub 同步配置（系统自身的旧默认数据源 erp-sync.json）自动迁移到统一 textdb 数据源，
+    // 防止多台设备配置分裂（一台用 GitHub、一台用 textdb 导致数据不联动）。
+    // 保留已填的 GitHub 令牌用于「双写备份」（push 时同步写到 GitHub，保持备用源最新）。
+    migrateLegacyCfg() {
+        if (!this.DEFAULT_SYNC_CFG) return false;
+        // 用户在云端同步页手动保存过 GitHub 配置（有意选择）→ 不自动迁移，尊重用户选择
+        if (localStorage.getItem("taiyuan_sync_gh_choice")) return false;
+        const c = this.loadCfg();
+        const isLegacy = c.provider === "github" && c.ghRepo === "TYcompnies/taiyuan-erp" && c.ghPath === "erp-sync.json";
+        if (!isLegacy) return false;
+        const keep = c.ghToken ? { ghToken: c.ghToken } : {};
+        this.saveCfg(Object.assign({}, this.DEFAULT_SYNC_CFG, keep));
+        this.setStatus({ lastAction: "已自动切换旧版同步配置到统一数据源（textdb）", lastError: "" });
+        if (typeof toast === "function") toast("🔄 检测到旧版同步配置，已自动切换到统一数据源", "success");
+        return true;
     },
     deviceId() {
         let d = localStorage.getItem(this.DEVICE_KEY);
@@ -269,6 +285,21 @@ const CloudSync = {
         if (this._busy) { if (manual) toast("同步操作进行中，请稍候", "error"); return false; }
         this._busy = true;
         try {
+            // LWW 版本保护：推送前先比较云端版本，防止本机旧数据覆盖其他设备的新数据
+            let remoteSnap = null;
+            try {
+                const pe = await this.pullRemote();
+                if (pe) remoteSnap = await this.parseSnapshot(pe).catch(() => null);
+            } catch (e) { /* 主源不可达时按无远端处理（正常推送，后续双写/兜底负责容错） */ }
+            const localRev = Utils.num(DB._mem.__rev) || 0;
+            if (remoteSnap && Utils.num(remoteSnap.rev) > localRev) {
+                // 云端较新：不覆盖，自动下载应用（覆盖前自动备份，本机未上传的改动保留在备份中）
+                this.setStatus({ lastPullAt: new Date().toISOString(), lastAction: "云端有更新，已自动下载（本机未上传改动已备份）", lastError: "" });
+                await this.applyRemote(remoteSnap);
+                if (manual) toast("检测到云端有更新的版本（其他设备已同步），已自动下载应用；本机未上传的改动已备份", "error");
+                else if (typeof toast === "function") toast("🔄 已自动同步其他设备的更新（本机未上传改动已备份）", "success");
+                return true;
+            }
             // 本地版本号推进（直接写 localStorage，避免触发递归 schedulePush）
             const snap = this.buildSnapshot();
             DB._mem.__rev = snap.rev;
@@ -279,8 +310,13 @@ const CloudSync = {
             if (c.provider === "textdb" && enc.length > this.MAX_TEXTDB_BYTES) {
                 throw new Error("数据量超出 textdb 上限（约 " + Math.round(this.MAX_TEXTDB_BYTES / 1000) + "KB 编码后），请改用 GitHub 同步");
             }
-            if (c.provider === "textdb") await this.textdbPush(enc);
-            else await this.githubPush(enc);
+            if (c.provider === "textdb") {
+                await this.textdbPush(enc);
+                // 双写备份：本机若填过 GitHub 令牌，同时写入仓库保持备用源最新（备用源写失败不影响主源）
+                if (c.ghToken) {
+                    try { await this.githubPush(enc); } catch (e) { /* 备用源写入失败忽略 */ }
+                }
+            } else await this.githubPush(enc);
             this.setStatus({ lastPushAt: new Date().toISOString(), lastPushSize: enc.length, lastError: "", lastAction: "push", remoteRev: snap.rev });
             if (manual) toast("已上传到云端（" + (enc.length / 1024).toFixed(1) + " KB）", "success");
             return true;
@@ -294,8 +330,38 @@ const CloudSync = {
     },
     async pullRemote() {
         const c = this.loadCfg();
-        if (c.provider === "textdb") return await this.textdbPull();
+        if (c.provider === "textdb") {
+            try {
+                return await this.textdbPull();
+            } catch (e) {
+                // 主源（textdb）不可达：从 GitHub 仓库公开文件兜底（只读，无需令牌），
+                // 保证不同网络下至少能读到备份数据；数据可能不是最新，但不会丢失同步能力
+                this.setStatus({ lastAction: "textdb 暂不可达，已从备用源(GitHub)读取（数据可能不是最新）" });
+                const backup = await this.ghRawPull();
+                if (backup !== null && backup !== "") return backup;
+                throw e;
+            }
+        }
         return await this.githubPull();
+    },
+    // 从 GitHub 公开仓库读取同步文件（无需令牌）：raw.githubusercontent 主 + jsDelivr CDN 备
+    async ghRawPull() {
+        const c = this.loadCfg();
+        const branch = "main";
+        const urls = [
+            "https://raw.githubusercontent.com/" + c.ghRepo + "/" + branch + "/" + encodeURIComponent(c.ghPath),
+            "https://cdn.jsdelivr.net/gh/" + c.ghRepo + "@" + branch + "/" + encodeURIComponent(c.ghPath)
+        ];
+        for (const u of urls) {
+            try {
+                const r = await fetch(u + "?t=" + Date.now(), { cache: "no-store" });
+                if (r.ok) {
+                    const t = (await r.text()).trim();
+                    if (t && t !== "null") return t;
+                }
+            } catch (e) { /* 尝试下一个源 */ }
+        }
+        return null;
     },
     /* 仅取远端快照（不覆盖本地），用于测试连接 / 比较版本 */
     async peek() {
@@ -314,7 +380,8 @@ const CloudSync = {
         try {
             const enc = await this.pullRemote();
             if (enc === null || enc === "") {
-                this.setStatus({ lastPullAt: new Date().toISOString(), lastError: "", lastAction: "pull-empty" });
+                // 云端暂无数据：保留 lastAction（如「已自动启用/已切换数据源」提示），仅更新拉取时间
+                this.setStatus({ lastPullAt: new Date().toISOString(), lastError: "" });
                 if (manual) toast("云端暂无数据（首次使用请先上传）", "error");
                 return false;
             }
@@ -456,11 +523,16 @@ const CloudSync = {
         });
     },
     startAuto() {
-        if (this._started) return;
         // 开发/测试环境（localhost/127.0.0.1）默认不自动应用内置配置，避免测试数据与云端互相污染；
         // 访问地址带 ?sync=1 时强制启用（供自动化测试在本地验证自动配置逻辑）
         const isDevHost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
         const forceSync = /[?&]sync=1/.test(location.search);
+        // 旧版 GitHub 同步配置自动迁移到统一 textdb 数据源（幂等；同样遵守 localhost 豁免）
+        if (!this._legacyChecked) {
+            this._legacyChecked = true;
+            if (!isDevHost || forceSync) this.migrateLegacyCfg();
+        }
+        if (this._started) return;
         // 从未保存过任何同步配置，但系统内置了默认配置 → 自动启用
         // （不同设备/不同浏览器/不同网域打开 ERP 时无需手动输入，即自动进入跨设备同步）
         if ((!isDevHost || forceSync) && !localStorage.getItem(this.CFG_KEY) && this.DEFAULT_SYNC_CFG) {
@@ -509,7 +581,7 @@ Pages.cloudSync = function () {
         </div>
     </div>
 
-    ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 15 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备、不同浏览器、不同网域打开本系统即自动同步，无需再手动点上传或下载；首次打开已自动启用内置同步配置。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 填写下方同步码（或 GitHub 令牌）并保存后，将自动开启实时跨设备同步。</div>` : "")}
+    ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 12 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备、不同浏览器、不同网域/不同网络 IP 打开本系统即自动同步，无需再手动点上传或下载。检测到旧版同步配置时自动切换到统一数据源，避免设备间数据分裂；textdb 主源不可达时自动从 GitHub 备用源读取。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 填写下方同步码（或 GitHub 令牌）并保存后，将自动开启实时跨设备同步。</div>` : "")}
 
     <div class="kpi-grid">
         <div class="kpi-card"><span>同步状态</span><strong style="font-size:16px">${c.pass ? "已加密" : "未加密"} ${providerBadge}</strong></div>
@@ -545,7 +617,7 @@ Pages.cloudSync = function () {
                         <button type="button" class="btn" onclick="Pages.syncGenCode()">生成随机码</button>
                     </div></div>
             </div>
-            <p class="muted">同一同步码在任意网络 IP 打开本系统并登录后，会自动下载该同步码的最新数据；数据量超出限制（约 100KB 原始数据）时请改用 GitHub。</p>
+            <p class="muted">同一同步码在任意网络 IP 打开本系统并登录后，会自动下载该同步码的最新数据；数据量超出限制（约 100KB 原始数据）时请改用 GitHub。若 textdb 暂时无法访问，系统会自动从 GitHub 备用源读取（需仓库内存在 erp-sync.json 备份）。</p>
         </section>
 
         <section class="form-section">
@@ -607,6 +679,9 @@ Pages.syncSaveCfg = function (e) {
     });
     if (cfg.provider === "textdb" && !cfg.code) { toast("请填写同步码", "error"); return; }
     if (cfg.provider === "github" && !cfg.ghToken) { toast("请填写 GitHub 访问令牌", "error"); return; }
+    // 记录用户主动选择（手动保存 GitHub 配置后，自动迁移逻辑将不再干预）
+    if (cfg.provider === "github") localStorage.setItem("taiyuan_sync_gh_choice", "1");
+    else localStorage.removeItem("taiyuan_sync_gh_choice");
     CloudSync._started = false; // 重新评估自动同步
     CloudSync.startAuto();
     toast("同步设置已保存", "success");

@@ -2,7 +2,7 @@
  * test-auto-sync.js — 自动云同步新行为验证（10 项）
  *
  * 验证内容：
- * A1  PULL_INTERVAL 为 15000（15 秒轮询）
+ * A1  PULL_INTERVAL 为 12000（12 秒轮询）
  * A2  schedulePull 设置防抖定时器（2 秒）
  * A3  schedulePull 多次调用只保留一个定时器
  * A4  schedulePull 未配置时不触发
@@ -71,11 +71,11 @@ async function db(page, fn, arg) {
     await page.waitForTimeout(500);
     await login();
 
-    // == A1: PULL_INTERVAL 为 15000 ==
+    // == A1: PULL_INTERVAL 为 12000 ==
     console.log('== A1: PULL_INTERVAL ==');
     await cleanup();
     const interval = await db(page, () => CloudSync.PULL_INTERVAL);
-    ok('A1 PULL_INTERVAL 为 15000（15 秒轮询）', interval === 15000);
+    ok('A1 PULL_INTERVAL 为 12000（12 秒轮询）', interval === 12000);
 
     // == A2: schedulePull 设置防抖定时器 ==
     console.log('== A2: schedulePull 设置定时器 ==');
