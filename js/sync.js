@@ -37,6 +37,7 @@ const CloudSync = {
     _busy: false,      // 上传/下载执行中
     _applying: false,  // 正在应用远端数据（禁止回推）
     _started: false,
+    _pendingPush: false,  // 本地有未上传的改动（重要：自动下载遇到它时先推本地，防止手机删除被云端旧数据覆盖还原）
     _lastAutoErr: "",  // 自动同步失败去重（同一错误只 toast 一次，变化或恢复后重置）
 
     /* ---------- 配置 ---------- */
@@ -315,6 +316,7 @@ const CloudSync = {
             DB._mem.__rev = snap.rev;
             DB._mem.__device = snap.device;
             try { localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(DB._mem)); } catch (e) { }
+            this._pendingPush = false; // 本地改动已成功上传
             this.setStatus({ lastPushAt: new Date().toISOString(), lastPushSize: enc.length, lastError: "", lastAction: "push", remoteRev: snap.rev });
             this._lastAutoErr = ""; // 恢复后重置失败提示
             if (manual) toast("已上传到云端（" + (enc.length / 1024).toFixed(1) + " KB）", "success");
@@ -375,6 +377,19 @@ const CloudSync = {
             if (manual) toast("请先填写并保存同步设置", "error");
             return false;
         }
+        // 【关键保护】本地还有未上传的改动时（如手机端刚删除客户/供应商，上传尚未成功）：
+        // 绝不能直接用云端旧数据覆盖本地——否则手机端的删除会被「还原」、电脑端永远看不到删除。
+        // 做法：先推本地（后推赢 LWW，本地 rev 变成最新），推送失败则拒绝覆盖并提示，保护本地改动。
+        // 注意：必须在本函数置 _busy 之前执行——否则 push() 会被自身的 _busy 守卫拒绝（死锁）。
+        if (this._pendingPush && !manual) {
+            if (this._busy) return false; // 已有同步在执行，等下一轮轮询再处理
+            const pushed = await this.push(false);
+            if (!pushed) {
+                this._notifyAutoError("上传", "本地有未同步改动且上传失败，已暂停自动下载以防数据被覆盖（详见 系统设置 / 云端同步）");
+                return false;
+            }
+            return true; // 本地最新状态已上传云端，其他设备将自动拉到，无需再下载
+        }
         if (this._busy) { if (manual) toast("同步操作进行中，请稍候", "error"); return false; }
         this._busy = true;
         try {
@@ -431,6 +446,7 @@ const CloudSync = {
         payload.__rev = snap.rev;
         payload.__device = snap.device;
         DB._mem = payload;
+        this._pendingPush = false; // 已整包覆盖本地，不再有「未上传的本地改动」
         this._applying = true;
         try {
             localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(DB._mem));
@@ -488,13 +504,25 @@ const CloudSync = {
 
     /* ---------- 自动调度 ---------- */
     schedulePush() {
-        if (this._busy || this._applying) return;
         const c = this.loadCfg();
         if (!c.autoPush || !this.isConfigured()) return;
+        // 记住有未推送的本地改动：即使当前正在执行其他同步也绝不丢弃，稍后自动重试补推
+        this._pendingPush = true;
         if (this._pushTimer) clearTimeout(this._pushTimer);
-        this._pushTimer = setTimeout(() => {
-            this.push(false).catch(() => { });
-        }, 3000);
+        this._pushTimer = setTimeout(() => { this._runPush().catch(() => { }); }, 3000);
+    },
+    // 推送执行器：忙/应用远端数据时稍后重试；推送失败（网络抖动等）15 秒后自动重试，直至成功
+    // （保证手机端任意保存/删除操作最终一定上传到云端，电脑端才能同步看到）
+    async _runPush() {
+        if (this._busy || this._applying) {
+            this._pushTimer = setTimeout(() => { this._runPush().catch(() => { }); }, 3000);
+            return;
+        }
+        const ok = await this.push(false);
+        if (!ok && this._pendingPush) {
+            // 上传失败且仍有未推送改动：保持待推状态，稍后自动重试（网络恢复后自愈）
+            this._pushTimer = setTimeout(() => { this._runPush().catch(() => { }); }, 15000);
+        }
     },
     schedulePull() {
         // 即时拉取（窗口聚焦/切回标签时触发），防抖 2 秒避免频繁请求
@@ -521,6 +549,7 @@ const CloudSync = {
             if (e.key === "taiyuan_erp_data_v1" && e.newValue) {
                 try {
                     DB._mem = JSON.parse(e.newValue);
+                    this._pendingPush = false; // 已采纳其他标签页的数据，由该标签负责上传
                     if (typeof render === "function") render();
                 } catch (err) { /* 数据格式异常忽略 */ }
             }

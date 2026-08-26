@@ -356,10 +356,14 @@ Pages.restoreBackup = function (id) {
         try {
             const data = JSON.parse(b.snapshot);
             data.backups = DB.list("backups"); // 保留现有备份历史，避免恢复后丢失快照清单
-            localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(data));
+            // 恢复的数据视为最新版本（rev 抬到当前时间），避免 12 秒轮询被云端旧快照覆盖还原；
+            // 并经 DB.flush() 触发云同步，让其他设备自动拉到恢复后的数据
+            data.__rev = Date.now();
+            if (typeof CloudSync !== "undefined" && CloudSync && CloudSync.deviceId) data.__device = CloudSync.deviceId();
             DB._mem = data;
             DB._loaded = true;
-            toast("数据已恢复", "success");
+            DB.flush();
+            toast("数据已恢复（已同步到云端）", "success");
             render();
         } catch (e) { toast("恢复失败：数据损坏", "error"); }
     }, "恢复备份");
@@ -396,10 +400,13 @@ Pages.importData = function () {
                 const data = JSON.parse(ev.target.result);
                 if (!data.items) throw new Error("不是有效的备份文件");
                 confirmModal(`确定要导入该备份文件吗？当前数据将被覆盖（共 ${Object.keys(data).length} 个数据表）。`, () => {
-                    localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(data));
+                    // 导入的数据视为最新版本并经 DB.flush() 触发云同步，其他设备自动拉到
+                    data.__rev = Date.now();
+                    if (typeof CloudSync !== "undefined" && CloudSync && CloudSync.deviceId) data.__device = CloudSync.deviceId();
                     DB._mem = data;
                     DB._loaded = true;
-                    toast("数据导入成功", "success");
+                    DB.flush();
+                    toast("数据导入成功（已同步到云端）", "success");
                     render();
                 }, "导入数据");
             } catch (e) { toast("导入失败：文件格式不正确", "error"); }

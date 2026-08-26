@@ -8,3 +8,6 @@ shots/
 Thumbs.db
 .vscode/
 .idea/
+
+# 诊断工具与云端快照（含加密数据，不入库）
+.diag/

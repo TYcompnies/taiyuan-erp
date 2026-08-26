@@ -223,6 +223,10 @@ async function cfgState(page) {
     await pageB.waitForTimeout(500);
 
     /* ===== U6：textdb 不可达 → 自动从 GitHub 备用源读取 ===== */
+    // 先冲刷 U5 清理产生的待推送改动（新保护：_pendingPush 时自动 pull 会先推本地；
+    // textdb 宕机时 push 失败 → 拒绝拉取以防 GitHub 备份覆盖本地改动——属正确保护行为，测试兜底路径前须先冲刷）
+    await pageB.evaluate(() => CloudSync.push(false));
+    await pageB.waitForTimeout(500);
     const bCurRev = await pageB.evaluate(() => Utils.num(DB._mem.__rev) || 0);
     ghFile = await seedCloud(pageB, bCurRev + 1000, 'c_gh_backup', 'GitHub備用源客戶');
     textdbDown = true;
