@@ -104,7 +104,7 @@ async function writeCloud(value) {
     rec("M1 手机旧 GitHub 配置自动迁移到 textdb", loginState.provider === "textdb" && loginState.hasCode, JSON.stringify(loginState));
     rec("M2 手机首拉完成（本地 rev = 云端 rev）", loginState.rev === (origSnap ? origSnap.rev : -1), "本地 rev=" + loginState.rev);
 
-    const loggedIn = await phone.evaluate(() => !!(window.DB && DB.currentUser && DB.currentUser().username));
+    const loggedIn = await phone.evaluate(() => !!(typeof DB !== "undefined" && DB.currentUser && DB.currentUser().username));
     rec("M3 手机登录成功", loggedIn, "");
 
     /* ---------- 手机操作：修改客户名 ---------- */
@@ -153,7 +153,7 @@ async function writeCloud(value) {
     await pc.goto(BASE, { waitUntil: "domcontentloaded" });
     await sleep(4000); // 自动配置 + 首拉
 
-    const pcLogin = await pc.evaluate(() => !!(window.DB && DB.currentUser && DB.currentUser().username));
+    const pcLogin = await pc.evaluate(() => !!(typeof DB !== "undefined" && DB.currentUser && DB.currentUser() && DB.currentUser().username));
     if (!pcLogin) {
         const hasPwd = await pc.evaluate(() => !!document.querySelector('input[type="password"]'));
         if (hasPwd) {
