@@ -37,6 +37,7 @@ const CloudSync = {
     _busy: false,      // 上传/下载执行中
     _applying: false,  // 正在应用远端数据（禁止回推）
     _started: false,
+    _lastAutoErr: "",  // 自动同步失败去重（同一错误只 toast 一次，变化或恢复后重置）
 
     /* ---------- 配置 ---------- */
     defaults() {
@@ -276,6 +277,13 @@ const CloudSync = {
     },
 
     /* ---------- 上传 / 下载 ---------- */
+    // 自动同步失败可见化（防重：同一错误只 toast 一次，错误变化或恢复后重置）
+    _notifyAutoError(kind, msg) {
+        const key = kind + ":" + msg;
+        if (this._lastAutoErr === key) return;
+        this._lastAutoErr = key;
+        if (typeof toast === "function") toast("⚠ 自动" + kind + "失败：" + msg + "（详见 系统设置 / 云端同步）", "error");
+    },
     async push(manual) {
         const c = this.loadCfg();
         if (!this.isConfigured()) {
@@ -285,26 +293,12 @@ const CloudSync = {
         if (this._busy) { if (manual) toast("同步操作进行中，请稍候", "error"); return false; }
         this._busy = true;
         try {
-            // LWW 版本保护：推送前先比较云端版本，防止本机旧数据覆盖其他设备的新数据
-            let remoteSnap = null;
-            try {
-                const pe = await this.pullRemote();
-                if (pe) remoteSnap = await this.parseSnapshot(pe).catch(() => null);
-            } catch (e) { /* 主源不可达时按无远端处理（正常推送，后续双写/兜底负责容错） */ }
-            const localRev = Utils.num(DB._mem.__rev) || 0;
-            if (remoteSnap && Utils.num(remoteSnap.rev) > localRev) {
-                // 云端较新：不覆盖，自动下载应用（覆盖前自动备份，本机未上传的改动保留在备份中）
-                this.setStatus({ lastPullAt: new Date().toISOString(), lastAction: "云端有更新，已自动下载（本机未上传改动已备份）", lastError: "" });
-                await this.applyRemote(remoteSnap);
-                if (manual) toast("检测到云端有更新的版本（其他设备已同步），已自动下载应用；本机未上传的改动已备份", "error");
-                else if (typeof toast === "function") toast("🔄 已自动同步其他设备的更新（本机未上传改动已备份）", "success");
-                return true;
-            }
-            // 本地版本号推进（直接写 localStorage，避免触发递归 schedulePush）
+            // 本地有改动要推送时按「后推赢」LWW 直接推（推送成功后才推进本地版本号，
+            // 推送失败不推进——保证后续 pull 仍能正确判断云端是否更新、不至永久失明）。
+            // 旧版「推送前先比较云端、云端较新就改为下载覆盖本地」的拦截会吃掉用户未推送的改动
+            // （手机本地 rev 是首拉值，电脑一旦推过云端就比它新，手机每次 push 都被拦截改为下载，
+            // 手机操作永远推不上云），故移除该拦截，恢复无条件推送。
             const snap = this.buildSnapshot();
-            DB._mem.__rev = snap.rev;
-            DB._mem.__device = snap.device;
-            try { localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(DB._mem)); } catch (e) { }
             const marked = await this._compress(JSON.stringify(snap));
             const enc = await this._encrypt(marked);
             if (c.provider === "textdb" && enc.length > this.MAX_TEXTDB_BYTES) {
@@ -317,12 +311,18 @@ const CloudSync = {
                     try { await this.githubPush(enc); } catch (e) { /* 备用源写入失败忽略 */ }
                 }
             } else await this.githubPush(enc);
+            // 推送成功后才推进本地版本号（失败时不推进，下次 pull 仍能按 LWW 正确判断）
+            DB._mem.__rev = snap.rev;
+            DB._mem.__device = snap.device;
+            try { localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(DB._mem)); } catch (e) { }
             this.setStatus({ lastPushAt: new Date().toISOString(), lastPushSize: enc.length, lastError: "", lastAction: "push", remoteRev: snap.rev });
+            this._lastAutoErr = ""; // 恢复后重置失败提示
             if (manual) toast("已上传到云端（" + (enc.length / 1024).toFixed(1) + " KB）", "success");
             return true;
         } catch (e) {
             this.setStatus({ lastError: "上传失败：" + e.message });
             if (manual) toast("上传失败：" + e.message, "error");
+            else this._notifyAutoError("上传", e.message);
             return false;
         } finally {
             this._busy = false;
@@ -389,6 +389,7 @@ const CloudSync = {
             this.setStatus({ lastPullAt: new Date().toISOString(), lastPullSize: enc.length, remoteRev: snap.rev });
             const localRev = Utils.num(DB._mem.__rev) || 0;
             if (snap.rev <= localRev) {
+                this._lastAutoErr = ""; // 本地已是最新，恢复后重置失败提示
                 if (manual) toast("本地已是最新版本，无需下载", "success");
                 return true;
             }
@@ -396,6 +397,7 @@ const CloudSync = {
                 // 手动下载：确认后备份并覆盖
                 confirmModal(`云端版本较新（${h(snap.updated_at)} 由 ${h(snap.device)} 更新）。下载将覆盖本地数据，系统会先自动备份当前数据，可随时恢复。确定继续吗？`, async () => {
                     await this.applyRemote(snap);
+                    this._lastAutoErr = "";
                     toast("云端数据已下载并应用（本地已备份）", "success");
                 }, "下载云端数据");
             } else {
@@ -403,6 +405,7 @@ const CloudSync = {
                 // 不同设备/不同网络打开时自动获取最新数据，无需手动点「下载」
                 const wasFirstSync = localRev === 0;
                 await this.applyRemote(snap);
+                this._lastAutoErr = ""; // 自动拉取成功，重置失败提示
                 if (wasFirstSync) toast("🔄 已自动从云端下载最新数据（首次同步，本地旧数据已备份）", "success");
                 else toast("🔄 已自动同步云端最新数据", "success");
             }
@@ -410,6 +413,7 @@ const CloudSync = {
         } catch (e) {
             this.setStatus({ lastError: "下载失败：" + e.message });
             if (manual) toast("下载失败：" + e.message, "error");
+            else this._notifyAutoError("下载", e.message);
             return false;
         } finally {
             this._busy = false;
@@ -588,6 +592,7 @@ Pages.cloudSync = function () {
         <div class="kpi-card"><span>上次上传</span><strong>${h(fmtTime(st.lastPushAt))}</strong></div>
         <div class="kpi-card"><span>上次下载</span><strong>${h(fmtTime(st.lastPullAt))}</strong></div>
         <div class="kpi-card"><span>本地版本号</span><strong>${Utils.num(DB._mem.__rev) || "未同步"}</strong></div>
+        <div class="kpi-card"><span>云端版本</span><strong id="cloudRevKpi" style="color:var(--muted)">读取中…</strong></div>
     </div>
     ${st.lastError ? `<div style="margin-bottom:16px;padding:10px 14px;border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:13.5px">⚠ ${h(st.lastError)}</div>` : ""}
     ${!c.pass ? `<div style="margin-bottom:16px;padding:10px 14px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 建议设置加密口令：同步码对应的云端地址是公开的，加密后他人即使取得地址也无法读取数据。</div>` : ""}
@@ -604,7 +609,7 @@ Pages.cloudSync = function () {
                 <div class="form-item"><label>自动上传</label>
                     <select name="autoPush"><option value="1"${c.autoPush ? " selected" : ""}>开启（数据变动 3 秒后自动上传）</option><option value="0"${!c.autoPush ? " selected" : ""}>关闭（仅手动上传）</option></select></div>
                 <div class="form-item"><label>自动下载</label>
-                    <select name="autoPull"><option value="1"${c.autoPull ? " selected" : ""}>开启（每 15 秒 + 切回窗口即时同步）</option><option value="0"${!c.autoPull ? " selected" : ""}>关闭（仅手动下载）</option></select></div>
+                    <select name="autoPull"><option value="1"${c.autoPull ? " selected" : ""}>开启（每 12 秒 + 切回窗口即时同步）</option><option value="0"${!c.autoPull ? " selected" : ""}>关闭（仅手动下载）</option></select></div>
             </div>
         </section>
 
@@ -660,6 +665,28 @@ Pages.cloudSync = function () {
     </section>`;
 
     renderShell("cloud_sync", content, "首页 / 系统设置 / 云端同步");
+
+    // 异步填充「云端版本」KPI：peek 一次云端，与本地版本号对比，一眼看出哪一环断了同步
+    // （云端 > 本地 = 有新数据未下载；云端 < 本地 = 本机未上传；相等 = 已同步）
+    setTimeout(() => {
+        const el = document.getElementById("cloudRevKpi");
+        if (!el) return; // 用户已切走其他页面
+        CloudSync.peek().then(snap => {
+            if (!el) return;
+            if (!snap) { el.textContent = "云端无数据"; el.style.color = "var(--warn, #b45309)"; return; }
+            el.textContent = fmtTime(snap.updated_at);
+            el.title = "rev " + snap.rev + " · 设备 " + snap.device;
+            const localRev = Utils.num(DB._mem.__rev) || 0;
+            if (snap.rev > localRev) el.style.color = "var(--primary, #2563eb)";     // 云端更新：有待下载
+            else if (snap.rev < localRev) el.style.color = "var(--warn, #b45309)";   // 本机更新：未上传
+            else el.style.color = "var(--muted, #6b7280)";                            // 已同步
+        }).catch(e => {
+            if (!el) return;
+            el.textContent = "读取失败";
+            el.title = e.message;
+            el.style.color = "var(--danger, #dc2626)";
+        });
+    }, 50);
 };
 
 Pages.syncSaveCfg = function (e) {

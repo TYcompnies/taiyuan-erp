@@ -15,7 +15,7 @@
 const { chromium } = require('playwright');
 
 // ?sync=1 强制本地启用自动配置（localhost 默认豁免）
-const BASE = (process.env.BASE || 'http://127.0.0.1:8902') + '?sync=1';
+const BASE = (process.env.BASE || 'http://127.0.0.1:8903') + '?sync=1';
 let browser;
 let passed = 0, failed = 0;
 const results = [];
@@ -170,32 +170,57 @@ async function cfgState(page) {
     const hasUnify = await pageB.evaluate(() => !!DB.get('customers', 'c_unify1'));
     ok('U4b 第二台全新设备自动拉取到统一数据源的数据（跨设备闭环）', hasUnify === true);
 
-    /* ===== U5：LWW 保护——本地旧 rev 不覆盖云端新数据 ===== */
-    // 设备 B 已有云端数据（rev=R1），模拟其本地 rev 落后（如断网期间）后触发推送
+    /* ===== U5：后推赢 LWW + push 失败不推进本地 rev（防 pull 永久失明）===== */
+    // 新语义：本地有改动要推送时按「后推赢」直接推（不再因云端 rev 较大就改为下载覆盖本地——
+    //   否则手机本地 rev 是首拉值，电脑一旦推过云端就比手机新，手机每次 push 都被拦截改为下载，
+    //   手机操作永远推不上云）；并保证 push 失败时不推进本地 __rev（否则本地 rev 虚高会让 pull
+    //   永久误判「本地已是最新」而看不到其他设备的新数据）。
     const revInfo = await pageB.evaluate(() => {
         return { localRev: Utils.num(DB._mem.__rev) || 0 };
     });
-    // 构造：云端已有更新数据（rev 比 B 大 1000，含客户 c_lww_new）
-    const seeded = await seedCloud(pageB, revInfo.localRev + 1000, 'c_lww_new', '云端新客戶LWW');
+    // 预设云端为「更新版本」（rev 比 B 大 2000，含 c_cloud_only）——模拟其他设备刚推过
+    const seeded = await seedCloud(pageB, revInfo.localRev + 2000, 'c_cloud_only', '雲端專屬客戶');
     cloudFile = seeded;
-    // B 本地也加一条旧客户（模拟 B 在离线状态录入了数据，rev 落后）
+    // B 本地加一条改动（模拟手机/电脑离线时录入），本地 rev 仍落后
     await pageB.evaluate((r) => {
-        DB._mem.__rev = r; // 确保本地 rev 落后
-        DB.insert('customers', { id: 'c_lww_old', name: '本機舊客戶LWW', phone: '13700000002', currency: 'CNY', created_at: new Date().toISOString() });
+        DB._mem.__rev = r; // 确保本地 rev 落后于云端
+        DB.insert('customers', { id: 'c_local_push', name: '本機推送客戶', phone: '13700000002', currency: 'CNY', created_at: new Date().toISOString() });
     }, revInfo.localRev);
-    await pageB.waitForTimeout(100); // flush 触发前
-    // 直接触发推送（模拟 B 保存数据后 3 秒防抖到期）
-    await pageB.evaluate(() => CloudSync.push(false));
+    await pageB.waitForTimeout(100);
+    // 直接触发推送（模拟 3 秒防抖到期）
+    const pushOk = await pageB.evaluate(() => CloudSync.push(false));
     await pageB.waitForTimeout(1500);
-    // 云端不应被 B 的旧数据覆盖：解密云端应包含 c_lww_new（云端新客户）且 B 已自动拉取
+    // U5a：B 的本地改动已成功推到云端（后推赢，未被云端较新拦截）
     const cloudState = await pageB.evaluate(() => CloudSync.peek().then(s => {
-        return { hasNew: !!(s.payload.customers || []).find(c => c.id === 'c_lww_new'), hasOld: !!(s.payload.customers || []).find(c => c.id === 'c_lww_old') };
+        const cs = (s.payload.customers || []);
+        return { hasLocalPush: !!cs.find(c => c.id === 'c_local_push'), cloudRev: s.rev };
     }).catch(e => ({ err: e.message })));
-    ok('U5a 云端新数据未被本地旧数据覆盖', cloudState.hasNew === true && cloudState.hasOld !== true);
-    const bState = await pageB.evaluate(() => {
-        return { hasNewLocal: !!DB.get('customers', 'c_lww_new'), hasOldLocal: !!DB.get('customers', 'c_lww_old') };
+    ok('U5a 本地有改动时 push 成功推送到云端（后推赢，不被云端较新拦截丢改动）', pushOk === true && cloudState.hasLocalPush === true);
+
+    // U5b：push 失败时不推进本地 __rev（关键：防 pull 永久失明）
+    const revBeforeFail = await pageB.evaluate(() => Utils.num(DB._mem.__rev) || 0);
+    textdbDown = true; // 模拟 textdb 主源不可达
+    await pageB.evaluate(() => {
+        DB.insert('customers', { id: 'c_fail_test', name: '推送失敗客戶', phone: '13700000009', currency: 'CNY', created_at: new Date().toISOString() });
     });
-    ok('U5b 本地自动拉取云端较新数据（未上传的旧改动已备份）', bState.hasNewLocal === true);
+    const failRes = await pageB.evaluate(() => CloudSync.push(false));
+    await pageB.waitForTimeout(800);
+    const revAfterFail = await pageB.evaluate(() => Utils.num(DB._mem.__rev) || 0);
+    ok('U5b push 失败时不推进本地 __rev（防 pull 永久失明看不到其他设备更新）', failRes === false && revAfterFail === revBeforeFail);
+    textdbDown = false;
+
+    // U5c：push 成功后才推进本地 __rev
+    const revBeforeOk = await pageB.evaluate(() => Utils.num(DB._mem.__rev) || 0);
+    const okRes = await pageB.evaluate(() => CloudSync.push(false));
+    await pageB.waitForTimeout(800);
+    const revAfterOk = await pageB.evaluate(() => Utils.num(DB._mem.__rev) || 0);
+    ok('U5c push 成功后才推进本地 __rev', okRes === true && revAfterOk > revBeforeOk);
+
+    // 清理 U5 测试数据（避免影响后续）
+    await pageB.evaluate(() => {
+        ['c_local_push', 'c_cloud_only', 'c_fail_test'].forEach(id => { const d = DB.get('customers', id); if (d) DB.remove('customers', id); });
+    });
+    await pageB.waitForTimeout(500);
 
     /* ===== U6：textdb 不可达 → 自动从 GitHub 备用源读取 ===== */
     const bCurRev = await pageB.evaluate(() => Utils.num(DB._mem.__rev) || 0);
