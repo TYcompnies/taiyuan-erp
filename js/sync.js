@@ -5,7 +5,8 @@
    - 传输格式：JSON → deflate 压缩 →（可选 AES-GCM 加密）→ base64
      标记：TY0: 明文 JSON ／ TY1: 压缩+base64 ／ TYE1: 加密(TY0/TY1)
    - 自动上传：DB.flush() 防抖 3 秒触发（仅 autoPush 开启时）
-   - 自动下载：render() 后首拉 + 每 60 秒轮询（仅 autoPull 开启时）
+   - 自动下载：render() 后首拉 + 每 15 秒轮询 + 切回窗口/标签即时拉取（仅 autoPull 开启时）
+   - 同浏览器多标签页：通过 storage 事件即时同步，无需轮询
    - 下载覆盖本地前自动备份（localStorage，保留最近 5 份），确保原有资料不丢失
    ============================================================ */
 
@@ -16,7 +17,7 @@ const CloudSync = {
     DEVICE_KEY: "taiyuan_device_id_v1",
     MAX_TEXTDB_BYTES: 28000,   // textdb URL 安全上限（编码后字符数）
     BACKUP_KEEP: 5,
-    PULL_INTERVAL: 60000,
+    PULL_INTERVAL: 15000,
 
     cfg: null,
     status: null,
@@ -320,12 +321,12 @@ const CloudSync = {
                     toast("云端数据已下载并应用（本地已备份）", "success");
                 }, "下载云端数据");
             } else {
-                // 自动下载：本地已有未同步业务数据时不覆盖（避免误删），仅提示
-                if (localRev === 0 && !this._businessEmpty()) {
-                    this.setStatus({ lastError: "云端有较新数据，但本地已有业务数据，请到云端同步页手动下载" });
-                    return false;
-                }
+                // 自动下载：远端较新即自动应用（覆盖前已自动备份，原有资料不丢失）
+                // 不同设备/不同网络打开时自动获取最新数据，无需手动点「下载」
+                const wasFirstSync = localRev === 0;
                 await this.applyRemote(snap);
+                if (wasFirstSync) toast("🔄 已自动从云端下载最新数据（首次同步，本地旧数据已备份）", "success");
+                else toast("🔄 已自动同步云端最新数据", "success");
             }
             return true;
         } catch (e) {
@@ -413,15 +414,46 @@ const CloudSync = {
             this.push(false).catch(() => { });
         }, 3000);
     },
+    schedulePull() {
+        // 即时拉取（窗口聚焦/切回标签时触发），防抖 2 秒避免频繁请求
+        if (this._busy || this._applying) return;
+        const c = this.loadCfg();
+        if (!c.autoPull || !this.isConfigured()) return;
+        if (this._focusTimer) clearTimeout(this._focusTimer);
+        this._focusTimer = setTimeout(() => {
+            this.pull(false).catch(() => { });
+        }, 2000);
+    },
+    _bindActivity() {
+        if (this._activityBound) return;
+        this._activityBound = true;
+        // 切回标签页 / 窗口聚焦 → 立即检查云端（跨设备实时同步的关键）
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) this.schedulePull();
+        });
+        window.addEventListener("focus", () => this.schedulePull());
+        window.addEventListener("pageshow", (e) => { if (e.persisted) this.schedulePull(); });
+        // 同一浏览器多标签页：另一标签写入数据时即时同步本页（无需等轮询）
+        window.addEventListener("storage", (e) => {
+            if (this._applying) return;
+            if (e.key === "taiyuan_erp_data_v1" && e.newValue) {
+                try {
+                    DB._mem = JSON.parse(e.newValue);
+                    if (typeof render === "function") render();
+                } catch (err) { /* 数据格式异常忽略 */ }
+            }
+        });
+    },
     startAuto() {
         if (this._started) return;
         const c = this.loadCfg();
         if (!c.autoPull || !this.isConfigured()) return;
         this._started = true;
+        this._bindActivity();
         // 登录后首拉（跨设备/跨 IP 打开时自动获取最新数据）
         setTimeout(() => { this.pull(false).catch(() => { }); }, 1500);
         this._pullTimer = setInterval(() => {
-            if (document.hidden) return;
+            if (document.hidden) return;          // 标签隐藏时跳过，可见时由 visibilitychange 补拉
             this.pull(false).catch(() => { });
         }, this.PULL_INTERVAL);
     }
@@ -447,13 +479,15 @@ Pages.cloudSync = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>云端同步</h1><p>跨设备、跨网络共用同一份 ERP 数据：本机变更自动上传云端，其他设备打开后自动下载最新版本；覆盖前自动备份，原有资料不丢失。</p></div>
+        <div><h1>云端同步</h1><p>跨设备、跨网络共用同一份 ERP 数据：本机变更自动上传云端，其他设备打开或切回窗口时自动下载最新版本；覆盖前自动备份，原有资料不丢失。</p></div>
         <div class="head-actions">
             <button class="btn" onclick="Pages.syncTest()">🔗 测试连接</button>
             <button class="btn" onclick="Pages.syncPushNow()">☁️ 立即上传</button>
             <button class="btn primary" onclick="Pages.syncPullNow()">⬇️ 立即下载</button>
         </div>
     </div>
+
+    ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 15 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备只需填入同一同步码/令牌即可共用数据，无需再手动点上传或下载。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 填写下方同步码（或 GitHub 令牌）并保存后，将自动开启实时跨设备同步。</div>` : "")}
 
     <div class="kpi-grid">
         <div class="kpi-card"><span>同步状态</span><strong style="font-size:16px">${c.pass ? "已加密" : "未加密"} ${providerBadge}</strong></div>
@@ -476,7 +510,7 @@ Pages.cloudSync = function () {
                 <div class="form-item"><label>自动上传</label>
                     <select name="autoPush"><option value="1"${c.autoPush ? " selected" : ""}>开启（数据变动 3 秒后自动上传）</option><option value="0"${!c.autoPush ? " selected" : ""}>关闭（仅手动上传）</option></select></div>
                 <div class="form-item"><label>自动下载</label>
-                    <select name="autoPull"><option value="1"${c.autoPull ? " selected" : ""}>开启（打开系统及每 60 秒自动检查）</option><option value="0"${!c.autoPull ? " selected" : ""}>关闭（仅手动下载）</option></select></div>
+                    <select name="autoPull"><option value="1"${c.autoPull ? " selected" : ""}>开启（每 15 秒 + 切回窗口即时同步）</option><option value="0"${!c.autoPull ? " selected" : ""}>关闭（仅手动下载）</option></select></div>
             </div>
         </section>
 

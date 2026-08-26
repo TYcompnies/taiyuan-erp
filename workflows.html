@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鈦沅商貿 ERP — 操作流程圖（含職務分工）</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft JhengHei","PingFang TC","Microsoft YaHei",sans-serif; background:#f1f5f9; color:#1e293b; line-height:1.6; padding:32px 16px; }
+  .wrap { max-width:1080px; margin:0 auto; }
+  header.doc { text-align:center; padding:36px 20px 28px; background:linear-gradient(135deg,#0f172a,#1e3a5f); color:#fff; border-radius:14px; margin-bottom:28px; }
+  header.doc h1 { font-size:26px; letter-spacing:2px; }
+  header.doc p { color:#cbd5e1; margin-top:8px; font-size:14px; }
+  header.doc .meta { margin-top:10px; font-size:12px; color:#94a3b8; }
+  .card { background:#fff; border-radius:12px; padding:26px 28px; margin-bottom:26px; box-shadow:0 1px 4px rgba(15,23,42,.08); }
+  .card>h2 { font-size:19px; padding-bottom:12px; margin-bottom:18px; border-bottom:3px solid #1e3a5f; display:flex; align-items:center; gap:10px; }
+  .card>h2 .no { background:#1e3a5f; color:#fff; width:30px; height:30px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:15px; flex:none; }
+  .card h3 { font-size:15px; margin:20px 0 10px; color:#0f172a; }
+  .card h3:first-of-type { margin-top:4px; }
+  p.note { font-size:13px; color:#64748b; margin:6px 0 14px; }
+
+  /* 角色图例 */
+  .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:4px; }
+  .role { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; padding:5px 12px; border-radius:999px; color:#fff; }
+  .r-biz  { background:#e11d48; }
+  .r-wh   { background:#2563eb; }
+  .r-acc  { background:#059669; }
+  .r-adm  { background:#7c3aed; }
+  .r-all  { background:#64748b; }
+  .legend .role span.acc { font-weight:400; opacity:.9; font-size:12px; }
+
+  /* 流程节点 */
+  .flow { display:flex; flex-wrap:wrap; align-items:stretch; gap:0; }
+  .fstep { flex:1 1 150px; min-width:150px; position:relative; padding:0 22px 0 0; margin:8px 0; }
+  .fstep:last-child { padding-right:0; }
+  .fstep:not(:last-child)::after { content:"▸"; position:absolute; right:2px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:18px; }
+  .node { background:#f8fafc; border:1px solid #e2e8f0; border-top:4px solid #64748b; border-radius:10px; padding:12px 12px 10px; height:100%; }
+  .node .role { font-size:11px; padding:3px 10px; margin-bottom:8px; }
+  .node b { display:block; font-size:14px; margin-bottom:4px; }
+  .node small { display:block; font-size:12px; color:#64748b; line-height:1.5; }
+  .node.sys { background:#fffbeb; border-color:#fde68a; border-top-color:#d97706; }
+  .node.auto { background:#f0fdf4; border-color:#bbf7d0; border-top-color:#16a34a; }
+  .node.auto b::before { content:"⚙ "; }
+  .node.warn { background:#fef2f2; border-color:#fecaca; border-top-color:#dc2626; }
+
+  /* 泳道式流程 */
+  .lane { display:flex; gap:14px; margin:10px 0; align-items:stretch; }
+  .lane .who { flex:0 0 108px; display:flex; align-items:center; justify-content:center; text-align:center; color:#fff; font-weight:700; font-size:14px; border-radius:10px; padding:10px 8px; }
+  .lane .steps { flex:1; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .lane .steps .node { flex:1 1 200px; min-width:190px; }
+  .lane + .lane { margin-top:2px; }
+  .down { text-align:center; color:#94a3b8; font-size:18px; margin:2px 0 6px; padding-left:122px; }
+
+  /* 决策/分支 */
+  .branch { display:flex; gap:14px; margin:12px 0 4px; flex-wrap:wrap; }
+  .branch .b { flex:1 1 260px; border:1px dashed #cbd5e1; border-radius:10px; padding:12px; }
+  .branch .b h4 { font-size:13px; margin-bottom:6px; }
+  .branch .b.yes h4 { color:#059669; } .branch .b.no h4 { color:#dc2626; }
+  .branch .b p { font-size:12px; color:#475569; }
+
+  /* KPI 网格 */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; margin:10px 0; }
+  .kpi { background:linear-gradient(180deg,#f8fafc,#eef2f7); border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; }
+  .kpi b { display:block; font-size:13px; color:#1e3a5f; }
+  .kpi small { font-size:11px; color:#64748b; }
+
+  /* 权限矩阵 */
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { border:1px solid #e2e8f0; padding:6px 8px; text-align:center; }
+  thead th { background:#1e3a5f; color:#fff; font-weight:600; position:sticky; }
+  tbody th { background:#f1f5f9; text-align:left; font-weight:600; white-space:nowrap; }
+  td.ok { color:#059669; font-weight:700; } td.no2 { color:#cbd5e1; }
+  tbody tr:nth-child(even) { background:#fafbfc; }
+  .grp td, .grp th { background:#e2e8f0 !important; font-weight:700; text-align:left; color:#0f172a; }
+
+  footer { text-align:center; color:#94a3b8; font-size:12px; padding:10px 0 30px; }
+  @media print {
+    body { background:#fff; padding:0; }
+    .card { box-shadow:none; border:1px solid #e2e8f0; page-break-inside:avoid; }
+    header.doc { border-radius:0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>義烏市鈦沅商貿有限公司 — ERP 操作流程圖</h1>
+  <p>首頁與各功能模組操作流程 × 職務分工總覽</p>
+  <div class="meta">系統網址：https://tycompnies.github.io/taiyuan-erp/　|　登入：各職務帳號　|　文件版本：2026-08-24</div>
+</header>
+
+<!-- 0 職務說明 -->
+<div class="card">
+  <h2><span class="no">〇</span>職務與角色總覽</h2>
+  <div class="legend">
+    <span class="role r-adm">系統管理員 admin <span class="acc">全部權限・系統維護</span></span>
+    <span class="role r-biz">業務（銷售） sales <span class="acc">訂單・客戶・銷退</span></span>
+    <span class="role r-wh">倉管 warehouse <span class="acc">出入庫・庫存</span></span>
+    <span class="role r-acc">會計 accounting <span class="acc">账款・傳票・報表</span></span>
+    <span class="role r-all">全員 <span class="acc">儀表板・出勤打卡</span></span>
+  </div>
+  <p class="note">系統另內建「管理者」角色（日常業務+報表全部權限、不含系統設置）。各角色權限可由系統管理員於「角色管理／權限管理」中調整。</p>
+</div>
+
+<!-- 1 首頁 -->
+<div class="card">
+  <h2><span class="no">一</span>首頁 Dashboard（登入後首屏）</h2>
+  <p class="note">所有職務登入後皆進入首頁；選單與快捷操作依<b>角色權限</b>自動顯示，未授權的功能自動隱藏。</p>
+
+  <div class="flow">
+    <div class="fstep"><div class="node"><span class="role r-all">全員</span><b>① 登入系統</b><small>輸入帳號密碼（如 admin / sales / warehouse / accounting）</small></div></div>
+    <div class="fstep"><div class="node auto"><span class="role r-all">系統</span><b>② 依角色載入選單</b><small>權限校驗：無權限的功能不顯示、直接輸入路由會被擋回首頁</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-all">全員</span><b>③ 查看首頁 KPI</b><small>本月營收 / 毛利 / 應收 / 應付 / 庫存價值（皆折算本位幣人民幣）</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-all">全員</span><b>④ 點擊快捷操作</b><small>依權限顯示 12 個快捷入口，點擊直達對應功能頁</small></div></div>
+  </div>
+
+  <h3>首頁 KPI 指標卡（全員可見，數字自動聯動）</h3>
+  <div class="kpi-grid">
+    <div class="kpi"><b>本月營收</b><small>按出貨日期歸屬・外幣×匯率</small></div>
+    <div class="kpi"><b>銷貨成本</b><small>出貨數量×換算率×成本</small></div>
+    <div class="kpi"><b>本月毛利／淨利</b><small>營收−成本−費用</small></div>
+    <div class="kpi"><b>應收賬款</b><small>未收淨額（扣退貨沖銷）</small></div>
+    <div class="kpi"><b>應付賬款</b><small>未付淨額（扣退回沖銷）</small></div>
+    <div class="kpi"><b>庫存價值</b><small>按採購幣別匯率折本位幣</small></div>
+    <div class="kpi"><b>低庫存提醒</b><small>低於安全庫存清單（倉管關注）</small></div>
+    <div class="kpi"><b>負庫存警示</b><small>缺貨商品即時提醒（倉管關注）</small></div>
+  </div>
+
+  <h3>快捷操作 → 對應職務</h3>
+  <table>
+    <thead><tr><th>快捷操作</th><th>負責職務</th><th>快捷操作</th><th>負責職務</th></tr></thead>
+    <tbody>
+      <tr><td>🧾 新增銷貨訂單</td><td><span class="role r-biz">業務</span></td><td>🛒 新增採購單</td><td><span class="role r-adm">管理者/管理員</span></td></tr>
+      <tr><td>🚚 出貨扣庫存</td><td><span class="role r-wh">倉管</span></td><td>📦 進貨入庫</td><td><span class="role r-wh">倉管</span></td></tr>
+      <tr><td>🏷️ 庫存調整</td><td><span class="role r-wh">倉管</span></td><td>↩️ 銷貨退回/折讓</td><td><span class="role r-biz">業務</span></td></tr>
+      <tr><td>💳 費用支出</td><td><span class="role r-acc">會計</span></td><td>📒 傳票作業</td><td><span class="role r-acc">會計</span></td></tr>
+      <tr><td>📊 損益表</td><td><span class="role r-acc">會計/業務(唯讀)</span></td><td>📈 庫存總覽</td><td><span class="role r-all">依權限</span></td></tr>
+      <tr><td>💾 系統備份</td><td><span class="role r-adm">管理員</span></td><td>📥 Excel 導入中心</td><td><span class="role r-adm">管理員</span></td></tr>
+    </tbody>
+  </table>
+  <p class="note">另設「日常流程」頁（#/daily-workflow）：以圖示引導新人按「進貨→出貨→收款→付款→報表」順序操作，管理者與管理員可見。</p>
+</div>
+
+<!-- 2 銷售循環 -->
+<div class="card">
+  <h2><span class="no">二</span>銷售循環：接單 → 出貨 → 收款（核心業務流程）</h2>
+  <p class="note">三個職務接力：業務接單 → 倉管出貨 → 會計收款；每一步自動更新庫存、賬款與會計傳票。</p>
+
+  <div class="lane"><div class="who" style="background:#e11d48">業務<br><small style="font-weight:400">sales</small></div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#e11d48"><b>① 建立客戶/商品主檔</b><small>首次交易前：客戶主檔（幣別/付款條件）、商品主檔（售價/換算率）</small></div>
+      <div class="node" style="border-top-color:#e11d48"><b>② 新增銷貨訂單</b><small>選客戶→自動帶入幣別/付款條件→加明細行（數量×單價即時算合計）→存為草稿</small></div>
+    </div>
+  </div>
+  <div class="down">▼</div>
+  <div class="lane"><div class="who" style="background:#2563eb">倉管<br><small style="font-weight:400">warehouse</small></div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#2563eb"><b>③ 訂單出貨</b><small>銷貨訂單列表→「出貨」→選倉庫/物流方式/物流單號→確認</small></div>
+      <div class="node auto"><b>④ 系統自動處理</b><small>校驗庫存（不足拒絕並提示需求量）→ 扣庫存×銷售換算率 → 生成出貨單 → 自動傳票（借：應收賬款／貸：主營業務收入）→ 訂單轉「已出貨」</small></div>
+      <div class="node warn"><b>⑤ 列印出貨單</b><small>出貨單列表/詳情均可列印（A4 格式・人民幣大寫）隨貨交付</small></div>
+    </div>
+  </div>
+  <div class="down">▼</div>
+  <div class="lane"><div class="who" style="background:#059669">會計<br><small style="font-weight:400">accounting</small></div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#059669"><b>⑥ 應收賬款查詢</b><small>應收賬款頁：未收 = 應收 − 已收 − 退貨沖銷；外幣自動折本位幣顯示</small></div>
+      <div class="node" style="border-top-color:#059669"><b>⑦ 收款登記</b><small>輸入金額/方式/日期（超收自動拒絕）→ 可分多次收款</small></div>
+      <div class="node auto"><b>⑧ 系統自動處理</b><small>自動傳票（借：庫存現金／貸：應收賬款）→ 訂單狀態轉 部分收款/已收清</small></div>
+    </div>
+  </div>
+  <div class="down">▼</div>
+  <div class="lane"><div class="who" style="background:#e11d48">業務<br><small style="font-weight:400">退貨處理</small></div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#e11d48"><b>⑨ 銷貨退回/折讓（如需）</b><small>選原訂單→自動帶出明細→填退回數量（超退限制）</small></div>
+      <div class="node auto"><b>⑩ 系統自動處理</b><small>庫存回補×換算率 + 應收沖減 + 成本沖回 → SRET 傳票；已有銷退記錄的出貨單禁止刪除</small></div>
+      <div class="node" style="border-top-color:#059669"><b>⑪ 月底結算（會計）</b><small>損益表：收入按出貨日期歸屬，退貨按退回日期沖減</small></div>
+    </div>
+  </div>
+</div>
+
+<!-- 3 採購循環 -->
+<div class="card">
+  <h2><span class="no">三</span>採購循環：下單 → 進貨 → 付款</h2>
+  <p class="note">管理者/管理員建立採購單 → 倉管進貨入庫 → 會計付款沖賬。</p>
+
+  <div class="lane"><div class="who" style="background:#7c3aed">管理者<br><small style="font-weight:400">/管理員</small></div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#7c3aed"><b>① 建立供應商主檔</b><small>幣別、付款條件、聯絡資訊（供應商主檔由管理者維護）</small></div>
+      <div class="node" style="border-top-color:#7c3aed"><b>② 新增採購單</b><small>選供應商→自動帶入幣別/付款條件→加明細行→保存草稿</small></div>
+    </div>
+  </div>
+  <div class="down">▼</div>
+  <div class="lane"><div class="who" style="background:#2563eb">倉管<br><small style="font-weight:400">warehouse</small></div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#2563eb"><b>③ 進貨入庫</b><small>採購單列表→「進貨」→確認彈窗→選入庫倉庫</small></div>
+      <div class="node auto"><b>④ 系統自動處理</b><small>庫存增加×採購換算率（如 1 箱=10 個）→ 自動傳票（借：庫存商品／貸：應付賬款，外幣×匯率折本位幣）→ 狀態轉「已進貨」；重複進貨會被攔截</small></div>
+    </div>
+  </div>
+  <div class="down">▼</div>
+  <div class="lane"><div class="who" style="background:#059669">會計<br><small style="font-weight:400">accounting</small></div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#059669"><b>⑤ 應付賬款查詢</b><small>未付 = 應付 − 已付 − 退回沖銷；外幣折本位幣顯示</small></div>
+      <div class="node" style="border-top-color:#059669"><b>⑥ 付款登記</b><small>金額/方式/日期（超付拒絕），可分多次付款</small></div>
+      <div class="node auto"><b>⑦ 系統自動處理</b><small>自動傳票（借：應付賬款／貸：庫存現金）→ 狀態轉 部分付款/已付清</small></div>
+    </div>
+  </div>
+  <div class="down">▼</div>
+  <div class="lane"><div class="who" style="background:#64748b">退回處理</div>
+    <div class="steps">
+      <div class="node" style="border-top-color:#64748b"><b>⑧ 採購退回/折讓（如需）</b><small>管理者登記：選原採購單→帶出明細→填退回數量</small></div>
+      <div class="node auto"><b>⑨ 系統自動處理</b><small>庫存扣減×換算率 + 應付沖減 → PRET 傳票</small></div>
+    </div>
+  </div>
+</div>
+
+<!-- 4 庫存管理 -->
+<div class="card">
+  <h2><span class="no">四</span>庫存管理（倉管負責）</h2>
+
+  <h3>庫存調整流程（盤點差異 / 拆包組包）</h3>
+  <div class="flow">
+    <div class="fstep"><div class="node" style="border-top-color:#2563eb"><span class="role r-wh">倉管</span><b>① 新增調整單</b><small>庫存調整→新增→選倉庫</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#2563eb"><span class="role r-wh">倉管</span><b>② 選商品填數量</b><small>正數入庫/負數出庫，標註庫存單位</small></div></div>
+    <div class="fstep"><div class="node auto"><span class="role r-all">系統</span><b>③ 即時預覽</b><small>異動前/異動後庫存自動預覽</small></div></div>
+    <div class="fstep"><div class="node auto"><span class="role r-all">系統</span><b>④ 過賬生效</b><small>庫存更新 + ADJ 自動傳票；刪除時按 −數量反向沖銷</small></div></div>
+  </div>
+
+  <h3>庫存報表（倉管/業務/會計均可查）</h3>
+  <div class="flow">
+    <div class="fstep"><div class="node"><span class="role r-all">依權限</span><b>庫存總覽</b><small>全部啟用商品（含 0 庫存）× 各倉庫數量與價值，標註庫存單位</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-all">依權限</span><b>安全庫存報表</b><small>負庫存「缺貨」/ 不足「+N」/ 充足「0」三色提示</small></div></div>
+    <div class="fstep"><div class="node warn"><span class="role r-wh">倉管</span><b>首頁低庫存提醒</b><small>低於安全庫存、負庫存商品即時清單，點擊直達</small></div></div>
+  </div>
+</div>
+
+<!-- 5 賬款財務 -->
+<div class="card">
+  <h2><span class="no">五</span>賬款與財務（會計負責）</h2>
+
+  <h3>日常賬務流程</h3>
+  <div class="flow">
+    <div class="fstep"><div class="node" style="border-top-color:#059669"><span class="role r-acc">會計</span><b>① 應收/應付盯賬</b><small>每日查未收/未付淨額（自動扣退貨沖銷、外幣折本位幣）</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#059669"><span class="role r-acc">會計</span><b>② 收款/付款登記</b><small>在訂單/採購單上直接登記，金額/方式/日期</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#059669"><span class="role r-acc">會計</span><b>③ 費用支出登記</b><small>房租/物流/平台費等，選會計科目→自動 EXP 傳票</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#059669"><span class="role r-acc">會計</span><b>④ 手工傳票（如需）</b><small>傳票作業→新增（僅「未過賬」）→借貸平衡→過賬；已過賬禁刪</small></div></div>
+  </div>
+
+  <h3>報表產出（月底結算）</h3>
+  <div class="flow">
+    <div class="fstep"><div class="node"><span class="role r-acc">會計</span><b>總分類賬</b><small>科目別明細賬</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-acc">會計</span><b>試算表</b><small>借貸平衡自動校驗</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-acc">會計</span><b>資產負債表</b><small>資產=負債+權益</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-acc">會計</span><b>損益表</b><small>收入−成本−費用=淨利（收入按出貨日歸屬）</small></div></div>
+  </div>
+  <p class="note">7 種業務事件（出貨/進貨/收款/付款/費用/銷退/採退/庫存調整）皆<b>自動生成已過賬傳票</b>，會計無需重複切票；刪除單據時傳票自動作廢。</p>
+</div>
+
+<!-- 6 基本資料 -->
+<div class="card">
+  <h2><span class="no">六</span>基本資料建立流程（系統初始化 / 新資料維護）</h2>
+  <p class="note">首次啟用建議按以下順序建立（前者為後者的前置資料）；批量資料可用 Excel 導入中心（管理員）。</p>
+  <div class="flow">
+    <div class="fstep"><div class="node" style="border-top-color:#7c3aed"><span class="role r-adm">管理員</span><b>① 基礎設置</b><small>倉庫→單位→幣別（本位幣唯一）→商品分類→付款條件→物流方式</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#e11d48"><span class="role r-biz">業務</span><b>② 商品主檔</b><small>編碼/售價/銷售換算率/安全庫存/庫存單位（業務與倉管均可維護）</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#e11d48"><span class="role r-biz">業務</span><b>③ 客戶主檔</b><small>幣別/付款條件（下單時自動帶入）</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#7c3aed"><span class="role r-adm">管理者</span><b>④ 供應商主檔</b><small>幣別/付款條件（採購時自動帶入）</small></div></div>
+    <div class="fstep"><div class="node sys"><span class="role r-adm">管理員</span><b>⑤ Excel 批量導入</b><small>導入中心：商品/客戶等主檔批量導入</small></div></div>
+  </div>
+  <p class="note">付款條件保存後自動同步到既有客戶/供應商的付款方式與天數；幣別匯率變動即時影響折本位幣金額。</p>
+</div>
+
+<!-- 7 出勤 -->
+<div class="card">
+  <h2><span class="no">七</span>出勤管理（全員打卡）</h2>
+  <div class="flow">
+    <div class="fstep"><div class="node"><span class="role r-all">全員</span><b>① 進入出勤管理</b><small>ERP 選單「出勤管理」（內嵌頁面）或「新視窗打開」</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-all">全員</span><b>② 獨立登入</b><small>出勤系統自有帳號（初始 admin/admin123），與 ERP 帳號體系獨立</small></div></div>
+    <div class="fstep"><div class="node"><span class="role r-all">全員</span><b>③ WiFi 打卡上下班</b><small>基於 WiFi 網路打卡，自動記錄出勤/迟到/早退</small></div></div>
+    <div class="fstep"><div class="node sys"><span class="role r-adm">管理員</span><b>④ 維護與雲同步</b><small>員工/班次/報表維護；數據存獨立空間，與 ERP 業務數據完全隔離</small></div></div>
+  </div>
+</div>
+
+<!-- 8 系統設置 -->
+<div class="card">
+  <h2><span class="no">八</span>系統設置（系統管理員專責）</h2>
+  <div class="flow">
+    <div class="fstep"><div class="node sys"><span class="role r-adm">管理員</span><b>① Excel 導入中心</b><small>歷史資料批量遷移（商品/客戶/供應商）</small></div></div>
+    <div class="fstep"><div class="node sys"><span class="role r-adm">管理員</span><b>② 系統備份</b><small>定期下載備份檔；可恢復；「清空業務數據」危險操作留基礎資料</small></div></div>
+    <div class="fstep"><div class="node sys"><span class="role r-adm">管理員</span><b>③ 雲端同步</b><small>配置 textdb.online / GitHub 雙供應商；AES 加密；多設備 LWW 合併；修改 3 秒後自動上傳</small></div></div>
+    <div class="fstep"><div class="node sys"><span class="role r-adm">管理員</span><b>④ 用戶/角色/權限</b><small>開通員工帳號→分配角色→微調權限；禁刪最後管理員</small></div></div>
+  </div>
+</div>
+
+<!-- 9 權限矩陣 -->
+<div class="card">
+  <h2><span class="no">九</span>功能 × 職務權限矩陣（預設角色）</h2>
+  <p class="note">✓ = 可使用（選單可見）。管理者角色含全部業務權限；實際權限可由管理員調整。</p>
+  <table>
+    <thead><tr><th style="text-align:left">功能項目</th><th>系統管理員<br>admin</th><th>業務<br>sales</th><th>倉管<br>warehouse</th><th>會計<br>accounting</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="5">首頁</td></tr>
+      <tr><th>Dashboard 儀表板</th><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td></tr>
+      <tr><th>日常流程（引導頁）</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="no2">—</td></tr>
+      <tr class="grp"><td colspan="5">日常作業</td></tr>
+      <tr><th>銷貨訂單（查看/建立）</th><td class="ok">✓</td><td class="ok">✓ 接單</td><td class="ok">✓ 查看</td><td class="no2">—</td></tr>
+      <tr><th>出貨單（出貨扣庫）</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓ 出貨</td><td class="no2">—</td></tr>
+      <tr><th>採購單（查看/建立）</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓ 查看/進貨</td><td class="no2">—</td></tr>
+      <tr><th>庫存調整</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓ 調整</td><td class="no2">—</td></tr>
+      <tr><th>銷貨退回/折讓</th><td class="ok">✓</td><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td></tr>
+      <tr><th>採購退回/折讓</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="no2">—</td></tr>
+      <tr class="grp"><td colspan="5">出勤管理</td></tr>
+      <tr><th>出勤管理（打卡/報表）</th><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td></tr>
+      <tr class="grp"><td colspan="5">賬款財務</td></tr>
+      <tr><th>應收賬款</th><td class="ok">✓</td><td class="ok">✓ 查看</td><td class="no2">—</td><td class="ok">✓ 收款</td></tr>
+      <tr><th>應付賬款</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="ok">✓ 付款</td></tr>
+      <tr><th>費用支出 / 傳票作業 / 會計科目</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="ok">✓</td></tr>
+      <tr><th>總分類賬 / 試算表 / 資產負債表</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="ok">✓</td></tr>
+      <tr><th>損益表</th><td class="ok">✓</td><td class="ok">✓ 查看</td><td class="no2">—</td><td class="ok">✓</td></tr>
+      <tr class="grp"><td colspan="5">基本資料</td></tr>
+      <tr><th>商品主檔</th><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td><td class="no2">—</td></tr>
+      <tr><th>客戶主檔</th><td class="ok">✓</td><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td></tr>
+      <tr><th>供應商主檔</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="no2">—</td></tr>
+      <tr><th>倉庫主檔</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓</td><td class="no2">—</td></tr>
+      <tr><th>單位/幣別/分類/物流/付款條件</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="no2">—</td></tr>
+      <tr class="grp"><td colspan="5">報表查詢</td></tr>
+      <tr><th>庫存總覽 / 安全庫存</th><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td></tr>
+      <tr class="grp"><td colspan="5">系統設置</td></tr>
+      <tr><th>Excel 導入 / 備份 / 雲同步 / 用戶 / 角色 / 權限</th><td class="ok">✓ 專責</td><td class="no2">—</td><td class="no2">—</td><td class="no2">—</td></tr>
+    </tbody>
+  </table>
+  <p class="note">註：採購單的「建立」權限預設屬管理者/管理員，倉管負責進貨入庫；如需倉管直接建採購單，請管理員於角色管理中勾選「新增/編輯採購單」。</p>
+</div>
+
+<footer>義烏市鈦沅商貿有限公司 ERP 進銷存系統 · 操作流程圖 · 2026-08-24</footer>
+</div>
+</body>
+</html>
