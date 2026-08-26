@@ -13,6 +13,8 @@ const { chromium } = require('playwright');
 
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
   await page.waitForTimeout(800);
+  // 禁用自动同步（线上验证脚本不读写生产云数据）
+  await page.evaluate(() => { if (typeof CloudSync !== 'undefined') CloudSync.DEFAULT_SYNC_CFG = null; });
   check(await page.locator('input[type=password]').count() > 0, '线上登录页渲染');
 
   const inputs = page.locator('input');

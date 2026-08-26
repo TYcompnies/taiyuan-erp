@@ -21,6 +21,8 @@ async function test(name, fn) {
 
 async function login(page) {
     await page.goto(BASE);
+    // 禁用自动同步（线上验证脚本不读写生产云数据）
+    await page.evaluate(() => { if (typeof CloudSync !== 'undefined') CloudSync.DEFAULT_SYNC_CFG = null; });
     await page.waitForSelector('#loginForm', { timeout: 15000 });
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');

@@ -39,6 +39,8 @@ async function db(page, fn, arg) {
     page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
+    // 禁用自动同步（线上验证脚本不读写生产云数据；仅验证代码行为）
+    await page.evaluate(() => { if (typeof CloudSync !== 'undefined') CloudSync.DEFAULT_SYNC_CFG = null; });
     await login();
 
     console.log('== 线上自动云同步验证 ==');

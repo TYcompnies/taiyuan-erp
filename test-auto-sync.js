@@ -177,8 +177,8 @@ async function db(page, fn, arg) {
     // 清理定时器
     await db(page, () => { if (CloudSync._pullTimer) { clearInterval(CloudSync._pullTimer); CloudSync._pullTimer = null; } });
 
-    // == A9: startAuto 未配置时不启动 ==
-    console.log('== A9: startAuto 未配置 ==');
+    // == A9: 本地环境（localhost）未配置时不自动应用内置配置（开发隔离） ==
+    console.log('== A9: startAuto 本地不自动应用内置配置 ==');
     await cleanup();
     await db(page, () => {
         CloudSync.cfg = { autoPull: true, code: '', provider: 'textdb', autoPush: true };
@@ -187,10 +187,12 @@ async function db(page, fn, arg) {
         CloudSync.startAuto();
     });
     await page.waitForTimeout(100);
-    const notStarted = await db(page, () => !CloudSync._started);
-    const notBound = await db(page, () => !CloudSync._activityBound);
-    ok('A9 未配置时 startAuto 不设置 _started', notStarted);
-    ok('A9b 未配置时 startAuto 不调用 _bindActivity', notBound);
+    const autoCfg = await db(page, () => {
+        const c = CloudSync.loadCfg();
+        return { provider: c.provider, started: CloudSync._started, saved: !!localStorage.getItem('taiyuan_sync_cfg_v1') };
+    });
+    ok('A9 本地环境未配置时不自动应用内置配置', autoCfg.provider === 'textdb' && autoCfg.saved === false);
+    ok('A9b 本地环境未配置时 startAuto 不启动（防污染）', autoCfg.started === false);
 
     // == A10: storage 事件处理：另一标签写入数据时即时更新 ==
     console.log('== A10: storage 事件即时同步 ==');

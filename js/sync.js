@@ -19,6 +19,17 @@ const CloudSync = {
     BACKUP_KEEP: 5,
     PULL_INTERVAL: 15000,
 
+    // 内置默认同步配置：任何设备/浏览器/网域首次打开时自动启用，
+    // 无需手动输入同步码或口令即可跨设备自动同步（可随时在云端同步页修改并保存覆盖）。
+    // 采用 textdb 同步码（无账号权限，安全）；数据 AES-256-GCM 加密存储。
+    DEFAULT_SYNC_CFG: {
+        provider: "textdb",
+        code: "382d3aa9-de38-4803-90be-ed24eff373b5",
+        pass: "c663bf4076dc622b4f8fd1e2",
+        autoPush: true,
+        autoPull: true
+    },
+
     cfg: null,
     status: null,
     _pushTimer: null,
@@ -446,6 +457,17 @@ const CloudSync = {
     },
     startAuto() {
         if (this._started) return;
+        // 开发/测试环境（localhost/127.0.0.1）默认不自动应用内置配置，避免测试数据与云端互相污染；
+        // 访问地址带 ?sync=1 时强制启用（供自动化测试在本地验证自动配置逻辑）
+        const isDevHost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+        const forceSync = /[?&]sync=1/.test(location.search);
+        // 从未保存过任何同步配置，但系统内置了默认配置 → 自动启用
+        // （不同设备/不同浏览器/不同网域打开 ERP 时无需手动输入，即自动进入跨设备同步）
+        if ((!isDevHost || forceSync) && !localStorage.getItem(this.CFG_KEY) && this.DEFAULT_SYNC_CFG) {
+            this.saveCfg(this.DEFAULT_SYNC_CFG);
+            this.setStatus({ lastAction: "已自动启用内置云同步配置", lastError: "" });
+            if (typeof toast === "function") toast("🔄 已自动启用跨设备云同步", "success");
+        }
         const c = this.loadCfg();
         if (!c.autoPull || !this.isConfigured()) return;
         this._started = true;
@@ -487,7 +509,7 @@ Pages.cloudSync = function () {
         </div>
     </div>
 
-    ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 15 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备只需填入同一同步码/令牌即可共用数据，无需再手动点上传或下载。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 填写下方同步码（或 GitHub 令牌）并保存后，将自动开启实时跨设备同步。</div>` : "")}
+    ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 15 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备、不同浏览器、不同网域打开本系统即自动同步，无需再手动点上传或下载；首次打开已自动启用内置同步配置。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 填写下方同步码（或 GitHub 令牌）并保存后，将自动开启实时跨设备同步。</div>` : "")}
 
     <div class="kpi-grid">
         <div class="kpi-card"><span>同步状态</span><strong style="font-size:16px">${c.pass ? "已加密" : "未加密"} ${providerBadge}</strong></div>

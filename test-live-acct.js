@@ -11,6 +11,8 @@ const BASE = 'https://tycompnies.github.io/taiyuan-erp/';
   const check = (cond, msg) => { cond ? pass++ : fail++; console.log((cond ? '  PASS: ' : '  FAIL: ') + msg); };
 
   await page.goto(BASE, { waitUntil: 'networkidle' });
+  // 禁用自动同步（防止测试数据推送/拉取污染生产 erp-sync.json）
+  await page.evaluate(() => { if (typeof CloudSync !== 'undefined') CloudSync.DEFAULT_SYNC_CFG = null; });
   await page.fill('[name=username]', 'admin');
   await page.fill('[name=password]', 'admin123');
   await page.click('button[type=submit]');

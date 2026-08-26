@@ -40,13 +40,14 @@ const BASE = "http://127.0.0.1:8902/";
     ok("CloudSync 已加载", csExists);
     const csCfgExists = await db(() => {
         const c = CloudSync.loadCfg();
+        // 本地开发环境豁免：未配置时保持默认 textdb，不自动应用内置 github 配置（防污染）
         return c && c.provider === "textdb" && c.autoPush === true;
     });
-    ok("默认配置正确", csCfgExists);
+    ok("本地环境未配置时保持默认配置（不自动应用内置）", csCfgExists);
 
     console.log("\n== 2. 配置保存 ==");
     await db(() => {
-        CloudSync.saveCfg({ code: "test_sync_code_001", pass: "testpass123" });
+        CloudSync.saveCfg({ provider: "textdb", code: "test_sync_code_001", pass: "testpass123" });
         return true;
     });
     const savedCfg = await db(() => {
