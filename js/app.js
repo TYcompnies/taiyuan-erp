@@ -279,6 +279,7 @@ function renderShell(activeCode, contentHtml, breadcrumb) {
         <div class="side-search"><input type="text" placeholder="搜索功能..." id="sideSearch"></div>
         <nav class="menu">${menuHtml}</nav>
     </aside>
+    <div class="sidebar-mask" onclick="App.toggleSidebar()" aria-hidden="true"></div>
     <main class="main">
         <header class="topbar">
             <button class="icon-btn" onclick="App.toggleSidebar()">☰</button>
@@ -353,6 +354,13 @@ const App = {
         render();
     },
     toggleSidebar() {
+        // 移动端（≤900px）：抽屉式展开/收起（带遮罩），不持久化
+        if (window.matchMedia("(max-width: 900px)").matches) {
+            document.body.classList.toggle("sidebar-open");
+            document.body.classList.remove("sidebar-collapsed");
+            return;
+        }
+        // 桌面端：折叠/展开侧边栏（持久化）
         const c = document.body.classList.toggle("sidebar-collapsed");
         localStorage.setItem("taiyuan_erp_sidebar", c ? "1" : "0");
     },
@@ -607,7 +615,9 @@ function render() {
         return;
     }
     const hash = location.hash || "#/dashboard";
-    document.body.className = localStorage.getItem("taiyuan_erp_sidebar") === "1" ? "sidebar-collapsed" : "";
+    // 移动端不应用桌面端折叠状态（抽屉独立控制）；桌面端按持久化恢复折叠
+    const isMobile = window.matchMedia("(max-width: 900px)").matches;
+    document.body.className = !isMobile && localStorage.getItem("taiyuan_erp_sidebar") === "1" ? "sidebar-collapsed" : "";
     document.body.classList.toggle("dark", localStorage.getItem("taiyuan_erp_dark") === "1");
     route(hash);
     // 云端同步：登录进入系统后启动自动同步（首拉 + 定时）

@@ -594,6 +594,11 @@ body.sidebar-collapsed .main { margin-left: 0; }
 }
 @media (max-width: 900px) {
     .sidebar { transform: translateX(-100%); }
+    /* 移动端抽屉：展开时滑入 + 半透明遮罩 */
+    body.sidebar-open .sidebar { transform: translateX(0); box-shadow: 4px 0 28px rgba(0,0,0,.28); }
+    .sidebar-mask { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 90; }
+    body.sidebar-open .sidebar-mask { display: block; }
+    body.sidebar-open { overflow: hidden; }
     .main { margin-left: 0; }
     .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
     .launch-check-grid { grid-template-columns: 1fr 1fr; }
