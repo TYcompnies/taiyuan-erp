@@ -108,19 +108,22 @@ async function writeCloud(value) {
     rec("M3 手机登录成功", loggedIn, "");
 
     /* ---------- 手机操作：修改客户名 ---------- */
-    console.log("\n== 2. 手机操作（修改客户名 cu1 → 同步诊断标记）==");
-    const before = await phone.evaluate(() => {
-        const c = DB.get("customers", "cu1");
-        return c ? c.name : null;
+    console.log("\n== 2. 手机操作（修改客户名 → 同步诊断标记）==");
+    // 生产数据无固定种子 ID：动态选取「cu1 或云端存在的第一个客户」当修改对象（测试后靠恢复原快照还原）
+    const target = await phone.evaluate(() => {
+        const c = DB.get("customers", "cu1") || (DB.list("customers") || [])[0];
+        return c ? { id: c.id, name: c.name } : null;
     });
+    if (!target) { console.error("FATAL: 云端无客户可测，跳过"); process.exit(1); }
+    console.log("   修改对象:", target.id, "原名称:", target.name);
     const MARK = "同步诊断-" + Date.now().toString(36);
-    await phone.evaluate((mark) => {
-        const c = DB.get("customers", "cu1");
+    await phone.evaluate(({ id, mark }) => {
+        const c = DB.get("customers", id);
         c.name = mark;
         DB.update("customers", c.id, { name: mark });
         DB.flush();
-    }, MARK);
-    console.log("   修改 cu1:", before, "→", MARK, "；等待自动 push（3s 防抖 + 网络）…");
+    }, { id: target.id, mark: MARK });
+    console.log("   修改", target.id, ":", target.name, "→", MARK, "；等待自动 push（3s 防抖 + 网络）…");
     await sleep(12000); // 3s 防抖 + push 网络 + 双写
 
     // 检查手机端同步状态
@@ -165,12 +168,12 @@ async function writeCloud(value) {
     }
     // 等 12 秒轮询或首拉生效
     await sleep(8000);
-    const pcName = await pc.evaluate(() => {
-        const c = DB.get("customers", "cu1");
+    const pcName = await pc.evaluate((id) => {
+        const c = DB.get("customers", id);
         return c ? c.name : null;
-    });
+    }, target.id);
     const pcRev = await pc.evaluate(() => (JSON.parse(localStorage.getItem("taiyuan_erp_data_v1") || "{}").__rev) || 0);
-    rec("M7 电脑端看到手机的修改", pcName === MARK, "电脑 cu1=" + pcName + "（期望 " + MARK + "） rev=" + pcRev);
+    rec("M7 电脑端看到手机的修改", pcName === MARK, "电脑 " + target.id + "=" + pcName + "（期望 " + MARK + "） rev=" + pcRev);
 
     /* ---------- 恢复云端 ---------- */
     console.log("\n== 4. 恢复云端原快照 ==");
