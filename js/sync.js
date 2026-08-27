@@ -184,6 +184,29 @@ const CloudSync = {
         payload.__device = this.deviceId();
         return { v: 1, rev, device: this.deviceId(), updated_at: new Date().toISOString(), payload };
     },
+    /* ---------- 内容指纹对账（hash） ---------- */
+    // 稳定序列化：键排序、排除同步元数据（__rev/__device/__hash）
+    _canon(v) {
+        if (v === null || typeof v !== "object") return typeof v + ":" + String(v);
+        if (Array.isArray(v)) return "[" + v.map(x => this._canon(x)).join(",") + "]";
+        const ks = Object.keys(v).filter(k => k !== "__rev" && k !== "__device" && k !== "__hash").sort();
+        return "{" + ks.map(k => JSON.stringify(k) + ":" + this._canon(v[k])).join(",") + "}";
+    },
+    // 64 位内容指纹（FNV-1a 双 lane）。
+    // 为什么只比 rev 不够：rev 只在「推送成功后」推进——若本地的改动从未上传成功
+    // （旧版本静默丢推 / 网络持续失败后 App 重开，内存标志 _pendingPush 归零），
+    // 本地 __rev 与云端完全相同但内容不同 = 本地存在「孤儿改动」，对旧逻辑永远不可见，
+    // 永远推不上云，其他设备也就永远看不到。故必须以内容指纹对账。
+    payloadHash(data) {
+        const s = this._canon(data);
+        let h1 = 0x811c9dc5, h2 = 0x01000193;
+        for (let i = 0; i < s.length; i++) {
+            const c = s.charCodeAt(i);
+            h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+            h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b) >>> 0;
+        }
+        return ("0000000" + h1.toString(16)).slice(-8) + ("0000000" + h2.toString(16)).slice(-8);
+    },
     parseSnapshot(marked) {
         // marked: 传输编码串（未解密）→ 解密 → 解压 → JSON
         return this._decrypt(marked).then(txt => this._decompress(txt)).then(json => {
@@ -299,6 +322,7 @@ const CloudSync = {
             // 旧版「推送前先比较云端、云端较新就改为下载覆盖本地」的拦截会吃掉用户未推送的改动
             // （手机本地 rev 是首拉值，电脑一旦推过云端就比它新，手机每次 push 都被拦截改为下载，
             // 手机操作永远推不上云），故移除该拦截，恢复无条件推送。
+            const localHash = this.payloadHash(DB._mem); // 推送前内容指纹（成功后记录，用于下次对账判脏）
             const snap = this.buildSnapshot();
             const marked = await this._compress(JSON.stringify(snap));
             const enc = await this._encrypt(marked);
@@ -315,6 +339,7 @@ const CloudSync = {
             // 推送成功后才推进本地版本号（失败时不推进，下次 pull 仍能按 LWW 正确判断）
             DB._mem.__rev = snap.rev;
             DB._mem.__device = snap.device;
+            DB._mem.__hash = localHash; // 记录「已上传」的内容指纹：后续本地任何改动都会使指纹失配 → 判脏
             try { localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(DB._mem)); } catch (e) { }
             this._pendingPush = false; // 本地改动已成功上传
             this.setStatus({ lastPushAt: new Date().toISOString(), lastPushSize: enc.length, lastError: "", lastAction: "push", remoteRev: snap.rev });
@@ -403,6 +428,46 @@ const CloudSync = {
             const snap = await this.parseSnapshot(enc);
             this.setStatus({ lastPullAt: new Date().toISOString(), lastPullSize: enc.length, remoteRev: snap.rev });
             const localRev = Utils.num(DB._mem.__rev) || 0;
+            // 【内容指纹对账】核心修复：rev 相同但内容不同 = 本地有从未上传成功的孤儿改动
+            // （典型：旧版本静默丢推 / 推送持续失败后 App 重开，_pendingPush 归零）。
+            // 旧逻辑只比 rev 会误判「本地已是最新」，孤儿改动永远推不上云、其他设备永远看不到。
+            const localHash = this.payloadHash(DB._mem);
+            const remoteHash = this.payloadHash(snap.payload);
+            const syncedHash = String(DB._mem.__hash || ""); // 上次成功推送/下载云端时记录的内容指纹
+            if (remoteHash === localHash) {
+                // 内容完全一致 → 真正的最新（rev 有差也只是重复推送），顺带对齐 rev 与指纹
+                this._lastAutoErr = "";
+                if (snap.rev > localRev || !syncedHash) {
+                    DB._mem.__rev = snap.rev;
+                    DB._mem.__device = snap.device;
+                    DB._mem.__hash = localHash;
+                    try { localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(DB._mem)); } catch (e) { }
+                }
+                if (manual) toast("本地已是最新版本，无需下载", "success");
+                return true;
+            }
+            // 本地脏判定：① 上次同步后本地有改动（指纹不匹配）；② rev 相同但内容不同（孤儿改动铁证）
+            const localDirty = (syncedHash && localHash !== syncedHash) || snap.rev === localRev;
+            if (localDirty) {
+                if (manual) {
+                    // 手动下载：明确警告本地有未上传改动，下载会丢失这些改动
+                    confirmModal(`⚠ 本地有未上传的改动（新增/删除/修改），下载云端会丢失这些改动（会先自动备份）。云端版本：${h(snap.updated_at)} 由 ${h(snap.device)} 更新。仍要下载吗？`, async () => {
+                        await this.applyRemote(snap);
+                        this._lastAutoErr = "";
+                        toast("云端数据已下载并应用（本地已备份）", "success");
+                    }, "下载云端数据");
+                    return true;
+                }
+                // 自动：后推赢 LWW——先推本地孤儿改动（含手机删除），推失败绝不覆盖本地
+                this._busy = false; // 释放忙碌锁再调 push，否则被 push 自身 _busy 守卫拒绝（死锁）
+                const pushed = await this.push(false);
+                if (!pushed) {
+                    this._notifyAutoError("上传", "检测到本地有未上传的改动但上传失败，已暂停下载以防数据被覆盖（详见 系统设置 / 云端同步）");
+                    return false;
+                }
+                toast("🔄 检测到本机有未上传的改动，已自动上传云端", "success");
+                return true; // 本地最新状态已在云端，其他设备将自动拉到
+            }
             if (snap.rev <= localRev) {
                 this._lastAutoErr = ""; // 本地已是最新，恢复后重置失败提示
                 if (manual) toast("本地已是最新版本，无需下载", "success");
@@ -445,6 +510,7 @@ const CloudSync = {
         const payload = JSON.parse(JSON.stringify(snap.payload));
         payload.__rev = snap.rev;
         payload.__device = snap.device;
+        payload.__hash = this.payloadHash(payload); // 自洽指纹：刚套用的云端内容即「已同步」状态
         DB._mem = payload;
         this._pendingPush = false; // 已整包覆盖本地，不再有「未上传的本地改动」
         this._applying = true;

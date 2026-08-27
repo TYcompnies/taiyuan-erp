@@ -3,7 +3,7 @@
    覆盖：配置读写、备份/恢复、编解码、页面渲染、自动调度
    ============================================================ */
 const { chromium } = require("playwright");
-const BASE = "http://127.0.0.1:8902/";
+const BASE = "http://127.0.0.1:8904/";
 
 (async () => {
     const browser = await chromium.launch({ channel: "msedge", headless: true });
