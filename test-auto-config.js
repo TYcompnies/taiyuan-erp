@@ -62,6 +62,10 @@ function mockTextdb(page) {
             if (!cloudFile) return route.fulfill({ status: 200, contentType: 'text/plain', body: 'null' });
             return route.fulfill({ status: 200, contentType: 'text/plain', body: cloudFile });
         }
+        // GitHub 备用源请求：测试环境一律视为无备份（隔离真实网络）
+        if (url.indexOf('raw.githubusercontent.com/') >= 0 || url.indexOf('cdn.jsdelivr.net/gh/') >= 0 || url.indexOf('api.github.com/repos/') >= 0) {
+            return route.fulfill({ status: 404, contentType: 'text/plain', body: '404' });
+        }
         return route.fallback();
     });
 }
@@ -98,7 +102,34 @@ async function cfgState(page) {
     ok('C2b 已内置同步码', !!s1.code && s1.code.length > 10);
     ok('C2c 已内置加密口令', s1.hasPass && s1.passLen >= 10);
     ok('C2d 自动上传/下载已开启', s1.autoPush === true && s1.autoPull === true);
-    ok('C3 自动同步调度已启动（首拉已执行）', String(s1.lastAction).indexOf('pull') >= 0 || String(s1.lastAction).indexOf('自动启用') >= 0);
+    // C3：轮询等待首拉执行（1.5s 首拉 + 异步 fetch，固定等待有竞态）
+    const waitFor = async (name, fn, timeout = 9000) => {
+        const t0 = Date.now(); let last;
+        while (Date.now() - t0 < timeout) { last = await fn(); if (last) return last; await pageA.waitForTimeout(300); }
+        return last;
+    };
+    const c3ok = await waitFor('C3', () => pageA.evaluate(() => {
+        const a = CloudSync.loadStatus().lastAction || "";
+        return a.indexOf('pull') >= 0 || a.indexOf('自动启用') >= 0 || a.indexOf('启用') >= 0;
+    }));
+    if (c3ok !== true) {
+        // 诊断：打印完整状态与配置（定位 C3 失败根因）
+        const diag = await pageA.evaluate(() => {
+            const s = CloudSync.loadStatus();
+            const c = CloudSync.loadCfg();
+            return {
+                lastAction: s.lastAction, lastError: s.lastError,
+                lastPullAt: s.lastPullAt, lastPushAt: s.lastPushAt,
+                started: CloudSync._started, busy: CloudSync._busy,
+                pendingPush: CloudSync._pendingPush,
+                cfgProvider: c.provider, cfgCode: (c.code || '').slice(0, 8),
+                neverSaved: !localStorage.getItem(CloudSync.CFG_KEY),
+                manual: localStorage.getItem(CloudSync.MANUAL_KEY)
+            };
+        });
+        console.log('  [C3 诊断] ' + JSON.stringify(diag));
+    }
+    ok('C3 自动同步调度已启动（首拉已执行）', c3ok === true);
 
     // C12：首次拉取无数据不报错，无 lastError
     const stA = await pageA.evaluate(() => CloudSync.loadStatus());
@@ -122,8 +153,8 @@ async function cfgState(page) {
     const s2 = await cfgState(pageB);
     ok('C6 第二台设备打开自动获得配置', s2.configured === true && s2.provider === 'textdb');
 
-    // C7：第二台设备自动拉取到第一台写入的客户
-    const hasCustA = await pageB.evaluate(() => !!DB.get('customers', 'c_auto1'));
+    // C7：第二台设备自动拉取到第一台写入的客户（轮询等待，首拉异步有竞态）
+    const hasCustA = await waitFor('C7', () => pageB.evaluate(() => !!DB.get('customers', 'c_auto1')));
     ok('C7 第二台设备自动拉取到第一台的数据（跨设备闭环）', hasCustA === true);
 
     // C8：第二台写入 → 自动上传

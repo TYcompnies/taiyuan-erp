@@ -15,9 +15,11 @@ const CloudSync = {
     STATUS_KEY: "taiyuan_sync_status_v1",
     BACKUP_KEY: "taiyuan_erp_backups_v1",
     DEVICE_KEY: "taiyuan_device_id_v1",
+    MANUAL_KEY: "taiyuan_sync_manual_v1", // 用户手动保存过同步配置（自动修复逻辑不再干预）
     MAX_TEXTDB_BYTES: 28000,   // textdb URL 安全上限（编码后字符数）
     BACKUP_KEEP: 5,
     PULL_INTERVAL: 12000,
+    FETCH_TIMEOUT: 15000,      // 弱网/跨网络下 fetch 超时（毫秒）：快速失败并转入备用通道，避免同步卡死
 
     // 内置默认同步配置：任何设备/浏览器/网域首次打开时自动启用，
     // 无需手动输入同步码或口令即可跨设备自动同步（可随时在云端同步页修改并保存覆盖）。
@@ -217,16 +219,24 @@ const CloudSync = {
     },
 
     /* ---------- 供应商：textdb ---------- */
+    // fetch 超时封装：不同网络（如手机 4G）下访问云端可能长时间无响应，
+    // 15 秒超时快速失败 → 转入备用通道 / 触发重试，保证同步不会卡死
+    _fetchT(url, opts) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), this.FETCH_TIMEOUT);
+        return fetch(url, Object.assign({ signal: ctrl.signal }, opts || {}))
+            .finally(() => clearTimeout(t));
+    },
     async textdbPush(enc) {
         const c = this.loadCfg();
         const url = "https://api.textdb.online/update/?key=" + encodeURIComponent(c.code) + "&value=" + encodeURIComponent(enc);
-        const r = await fetch(url, { method: "POST" });
+        const r = await this._fetchT(url, { method: "POST" });
         if (!r.ok) throw new Error("textdb 写入失败 (HTTP " + r.status + ")");
         return true;
     },
     async textdbPull() {
         const c = this.loadCfg();
-        const r = await fetch("https://textdb.online/" + encodeURIComponent(c.code), { cache: "no-store" });
+        const r = await this._fetchT("https://textdb.online/" + encodeURIComponent(c.code), { cache: "no-store" });
         if (!r.ok) throw new Error("textdb 读取失败 (HTTP " + r.status + ")");
         const t = (await r.text()).trim();
         if (!t || t === "null" || t.indexOf("key not found") >= 0) return null;
@@ -242,7 +252,7 @@ const CloudSync = {
     },
     async ghGet() {
         const c = this.loadCfg();
-        const r = await fetch("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath) + "?t=" + Date.now(), { headers: this._ghHeaders(), cache: "no-store" });
+        const r = await this._fetchT("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath) + "?t=" + Date.now(), { headers: this._ghHeaders(), cache: "no-store" });
         if (r.status === 404) return null;
         if (r.status === 401) throw new Error("GitHub Token 无效或已过期");
         if (!r.ok) throw new Error("GitHub 读取失败 (HTTP " + r.status + ")");
@@ -263,7 +273,7 @@ const CloudSync = {
         const c = this.loadCfg();
         const body = { message: "ERP cloud sync " + new Date().toISOString(), content: this._textToB64(enc) };
         if (sha) body.sha = sha;
-        const r = await fetch("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath), {
+        const r = await this._fetchT("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath), {
             method: "PUT", headers: this._ghHeaders(), body: JSON.stringify(body)
         });
         if (!r.ok) {
@@ -277,7 +287,7 @@ const CloudSync = {
         let sha = null;
         try {
             const c = this.loadCfg();
-            const r = await fetch("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath) + "?t=" + Date.now(), { headers: this._ghHeaders(), cache: "no-store" });
+            const r = await this._fetchT("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath) + "?t=" + Date.now(), { headers: this._ghHeaders(), cache: "no-store" });
             if (r.ok) { const j = await r.json(); sha = j.sha || null; }
         } catch (e) { /* 忽略，按新建处理 */ }
         try {
@@ -288,7 +298,7 @@ const CloudSync = {
                 let sha2 = null;
                 try {
                     const c = this.loadCfg();
-                    const r2 = await fetch("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath) + "?t=" + Date.now(), { headers: this._ghHeaders(), cache: "no-store" });
+                    const r2 = await this._fetchT("https://api.github.com/repos/" + c.ghRepo + "/contents/" + encodeURIComponent(c.ghPath) + "?t=" + Date.now(), { headers: this._ghHeaders(), cache: "no-store" });
                     if (r2.ok) { const j2 = await r2.json(); sha2 = j2.sha || null; }
                 } catch (e2) { }
                 return await this.ghPut(enc, sha2);
@@ -330,12 +340,47 @@ const CloudSync = {
                 throw new Error("数据量超出 textdb 上限（约 " + Math.round(this.MAX_TEXTDB_BYTES / 1000) + "KB 编码后），请改用 GitHub 同步");
             }
             if (c.provider === "textdb") {
-                await this.textdbPush(enc);
-                // 双写备份：本机若填过 GitHub 令牌，同时写入仓库保持备用源最新（备用源写失败不影响主源）
-                if (c.ghToken) {
-                    try { await this.githubPush(enc); } catch (e) { /* 备用源写入失败忽略 */ }
+                // 主通道：textdb（跨网域统一空间，免设定即用）
+                try {
+                    await this.textdbPush(enc);
+                    // 双写备份：本机若填过 GitHub 令牌，同时写入仓库保持备用源最新（备用源写失败不影响主源）
+                    if (c.ghToken) {
+                        try { await this.githubPush(enc); } catch (e) { /* 备用源写入失败忽略 */ }
+                    }
+                } catch (e1) {
+                    // 【跨网络/跨网域容错】主通道 textdb 不可达（如手机 4G 访问不了 textdb.online）：
+                    // 配置了 GitHub 令牌时自动切换 GitHub 备用通道写入，保证改动仍能推上云，
+                    // 其他设备（pull 双源对账）照样能拉到最新数据。
+                    if (c.ghToken) {
+                        try {
+                            await this.githubPush(enc);
+                            this.setStatus({ lastAction: "push(主通道 textdb 不可达，已用 GitHub 备用通道上传)" });
+                        } catch (e2) {
+                            throw new Error("上传失败（textdb：" + e1.message + "；GitHub：" + e2.message + "）");
+                        }
+                    } else {
+                        // 无备用通道：明确提示配置 GitHub 令牌可增强跨网络可靠性
+                        throw new Error("textdb 不可达且未配置 GitHub 备用令牌：" + e1.message + "（可在下方填写 GitHub 访问令牌作备用通道）");
+                    }
                 }
-            } else await this.githubPush(enc);
+            } else {
+                // 主通道：GitHub
+                try {
+                    await this.githubPush(enc);
+                } catch (e1) {
+                    // GitHub 不可达 → textdb 备用通道（有同步码时）
+                    if (c.code) {
+                        try {
+                            await this.textdbPush(enc);
+                            this.setStatus({ lastAction: "push(GitHub 不可达，已用 textdb 备用通道上传)" });
+                        } catch (e2) {
+                            throw new Error("上传失败（GitHub：" + e1.message + "；textdb：" + e2.message + "）");
+                        }
+                    } else {
+                        throw e1;
+                    }
+                }
+            }
             // 推送成功后才推进本地版本号（失败时不推进，下次 pull 仍能按 LWW 正确判断）
             DB._mem.__rev = snap.rev;
             DB._mem.__device = snap.device;
@@ -358,16 +403,33 @@ const CloudSync = {
     async pullRemote() {
         const c = this.loadCfg();
         if (c.provider === "textdb") {
-            try {
-                return await this.textdbPull();
-            } catch (e) {
-                // 主源（textdb）不可达：从 GitHub 仓库公开文件兜底（只读，无需令牌），
-                // 保证不同网络下至少能读到备份数据；数据可能不是最新，但不会丢失同步能力
-                this.setStatus({ lastAction: "textdb 暂不可达，已从备用源(GitHub)读取（数据可能不是最新）" });
-                const backup = await this.ghRawPull();
-                if (backup !== null && backup !== "") return backup;
-                throw e;
+            // 【双源对账】同时读 textdb 主源 + GitHub 备用备份，取版本较新者。
+            // 为什么必须双源：手机在 4G 等网络下 textdb 不可达时，push 会自动切 GitHub 备用通道写入——
+            // 此时 textdb 里仍是旧快照、GitHub 里才是最新。若电脑只读 textdb，就会误判「已是最新」永远看不到更新。
+            // 双源对账后：任何一台设备无论从哪个通道写入，其他设备都能读到最新版本（跨网络/跨网域彻底联动）。
+            let fromTextdb = null, fromGh = null, textdbErr = null;
+            try { fromTextdb = await this.textdbPull(); } catch (e) { textdbErr = e; }
+            try { fromGh = await this.ghRawPull(); } catch (e) { /* GitHub 不可达不影响主源 */ }
+            if (fromTextdb !== null && fromGh !== null && fromGh !== "") {
+                try {
+                    const s1 = await this.parseSnapshot(fromTextdb);
+                    const s2 = await this.parseSnapshot(fromGh);
+                    if (s2.rev > s1.rev) {
+                        this.setStatus({ lastAction: "已从双源取较新版本（GitHub 备用源更新，主源 textdb 滞后）" });
+                        return fromGh;
+                    }
+                    if (s1.rev > s2.rev) return fromTextdb;
+                    // rev 相同：主源优先（内容对账交给 pull() 的指纹判断）
+                    return fromTextdb;
+                } catch (e) { return fromTextdb; }
             }
+            if (fromTextdb !== null) return fromTextdb;
+            if (fromGh !== null && fromGh !== "") {
+                this.setStatus({ lastAction: (!textdbErr) ? "textdb 暂无数据，已从 GitHub 备用源读取" : "textdb 暂不可达，已从备用源(GitHub)读取" });
+                return fromGh;
+            }
+            if (textdbErr) throw textdbErr;
+            return null;
         }
         return await this.githubPull();
     },
@@ -381,7 +443,7 @@ const CloudSync = {
         ];
         for (const u of urls) {
             try {
-                const r = await fetch(u + "?t=" + Date.now(), { cache: "no-store" });
+                const r = await this._fetchT(u + "?t=" + Date.now(), { cache: "no-store" });
                 if (r.ok) {
                     const t = (await r.text()).trim();
                     if (t && t !== "null") return t;
@@ -632,12 +694,19 @@ const CloudSync = {
             if (!isDevHost || forceSync) this.migrateLegacyCfg();
         }
         if (this._started) return;
-        // 从未保存过任何同步配置，但系统内置了默认配置 → 自动启用
-        // （不同设备/不同浏览器/不同网域打开 ERP 时无需手动输入，即自动进入跨设备同步）
-        if ((!isDevHost || forceSync) && !localStorage.getItem(this.CFG_KEY) && this.DEFAULT_SYNC_CFG) {
-            this.saveCfg(this.DEFAULT_SYNC_CFG);
-            this.setStatus({ lastAction: "已自动启用内置云同步配置", lastError: "" });
-            if (typeof toast === "function") toast("🔄 已自动启用跨设备云同步", "success");
+        // 从未保存过任何同步配置，或保存过但配置不可用（旧版本残留空同步码 / 网域切换后配置分裂），
+        // 且用户未手动自定义 → 自动启用内置默认配置，确保不同设备/浏览器/网域都指向同一数据空间
+        if ((!isDevHost || forceSync) && this.DEFAULT_SYNC_CFG) {
+            const c0 = this.loadCfg();
+            const neverSaved = !localStorage.getItem(this.CFG_KEY);
+            const manual = localStorage.getItem(this.MANUAL_KEY) || localStorage.getItem("taiyuan_sync_gh_choice");
+            const broken = (c0.provider === "textdb" && !c0.code) || (c0.provider === "github" && (!c0.ghToken || !c0.ghRepo));
+            if (neverSaved || (!manual && broken)) {
+                const keep = c0.ghToken ? { ghToken: c0.ghToken } : {};
+                this.saveCfg(Object.assign({}, this.DEFAULT_SYNC_CFG, keep));
+                this.setStatus({ lastAction: neverSaved ? "已自动启用内置云同步配置" : "检测到同步配置不可用，已自动恢复统一数据空间（textdb）", lastError: "" });
+                if (typeof toast === "function") toast(neverSaved ? "🔄 已自动启用跨设备云同步" : "🔄 检测到同步配置不可用，已自动恢复统一数据空间", "success");
+            }
         }
         const c = this.loadCfg();
         if (!c.autoPull || !this.isConfigured()) return;
@@ -662,6 +731,13 @@ Pages.cloudSync = function () {
 
     const fmtTime = (iso) => iso ? iso.replace("T", " ").slice(0, 19) : "-";
     const providerBadge = c.provider === "textdb" ? '<span class="badge teal">textdb.online</span>' : '<span class="badge purple">GitHub</span>';
+    // 同步空间标识：所有设备/网域必须指向同一空间才会联动（仅显示同步码首尾，便于核对且不泄露完整码）
+    const spaceTag = c.provider === "textdb"
+        ? "textdb · " + h(c.code.slice(0, 8)) + "…" + h(c.code.slice(-4))
+        : "GitHub · " + h(c.ghRepo);
+    const chTag = c.provider === "textdb"
+        ? `textdb（主）${c.ghToken ? "＋GitHub（备）" : "（未配置备用令牌，弱网建议填 GitHub PAT）"}`
+        : `GitHub（主）${c.code ? "＋textdb（备）" : ""}`;
 
     const backupRows = bks.map((b, i) => `<tr>
         <td>${h(fmtTime(b.ts))}</td>
@@ -681,6 +757,8 @@ Pages.cloudSync = function () {
     </div>
 
     ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 12 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备、不同浏览器、不同网域/不同网络 IP 打开本系统即自动同步，无需再手动点上传或下载。检测到旧版同步配置时自动切换到统一数据源，避免设备间数据分裂；textdb 主源不可达时自动从 GitHub 备用源读取。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 填写下方同步码（或 GitHub 令牌）并保存后，将自动开启实时跨设备同步。</div>` : "")}
+
+    <div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">📡</span><div><b>同步空间：${spaceTag}</b> &nbsp;·&nbsp; 通道：${chTag}<br><span style="opacity:.85">所有设备/网域必须指向同一「同步空间」才会联动。手机与电脑不同步时，请先核对两端此处空间标识是否一致。textdb 主通道不可达时自动切换 GitHub 备用通道；读取时双源对账取较新版本。</span></div></div>
 
     <div class="kpi-grid">
         <div class="kpi-card"><span>同步状态</span><strong style="font-size:16px">${c.pass ? "已加密" : "未加密"} ${providerBadge}</strong></div>
@@ -804,6 +882,7 @@ Pages.syncSaveCfg = function (e) {
     // 记录用户主动选择（手动保存 GitHub 配置后，自动迁移逻辑将不再干预）
     if (cfg.provider === "github") localStorage.setItem("taiyuan_sync_gh_choice", "1");
     else localStorage.removeItem("taiyuan_sync_gh_choice");
+    localStorage.setItem(CloudSync.MANUAL_KEY, "1"); // 手动保存过：配置自愈逻辑不再自动覆盖
     CloudSync._started = false; // 重新评估自动同步
     CloudSync.startAuto();
     toast("同步设置已保存", "success");
