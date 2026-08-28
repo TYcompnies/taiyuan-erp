@@ -1,6 +1,6 @@
 /**
  * test-guards.js — 业务守卫与幂等专项测试
- * 验证：重复操作守卫 / 超收超付拒绝 / 传票幂等 / 已过账禁删 / 状态锁定。
+ * 验证：重复操作守卫 / 超收超付拒绝 / 会计模块移除后无传票写入 / 状态锁定。
  */
 const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8902';
@@ -119,13 +119,12 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
         const g4 = await db(page, (a) => ({
             recv: Utils.num(DB.get('sales_orders', a.soId).received_amount),
             ps: DB.get('sales_orders', a.soId).payment_status,
-            v1: DB.list('vouchers').some(v => v.biz_key === 'RECV:' + a.soId + ':1'),
-            v2: DB.list('vouchers').some(v => v.biz_key === 'RECV:' + a.soId + ':2')
+            vouchers: DB.list('vouchers').length
         }), setup);
-        await test('G4 分两次收款各 20：状态 paid 且两张 RECV 传票', async () => {
+        await test('G4 分两次收款各 20：状态 paid 且不产生传票（会计已移除）', async () => {
             if (g4.recv !== 40) throw new Error('received = ' + g4.recv);
             if (g4.ps !== 'paid') throw new Error('payment_status = ' + g4.ps);
-            if (!g4.v1 || !g4.v2) throw new Error(`传票 v1=${g4.v1} v2=${g4.v2}`);
+            if (g4.vouchers !== 0) throw new Error('vouchers = ' + g4.vouchers);
         });
 
         // ---- G5 超付拒绝 ----
@@ -140,40 +139,34 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
         });
         await db(page, () => document.querySelectorAll('.modal-mask').forEach(m => m.remove()));
 
-        // ---- G6 传票幂等（同 bizKey 不重复） ----
-        const g6 = await db(page, (a) => {
-            const so = DB.get('sales_orders', a.soId);
-            const before = DB.list('vouchers').length;
-            // 重复调用 onShipment（理论上不该发生，但验证幂等防线）
-            const ship = DB.list('shipments')[0];
-            const v1 = ACCT.onShipment(ship, so);
-            const v2 = ACCT.onShipment(ship, so);
-            const after = DB.list('vouchers').length;
-            return { before, after, v1: !!v1, v2: !!v2 };
-        }, setup);
-        await test('G6 onShipment 重复调用幂等（不产生重复传票）', async () => {
-            if (g6.after !== g6.before) throw new Error(`传票数 ${g6.before} → ${g6.after}`);
+        // ---- G6 业务操作不产生传票（会计模块已移除） ----
+        const g6 = await db(page, (a) => ({
+            vouchers: DB.list('vouchers').length,
+            expenses: DB.list('expenses').length,
+            accounts: DB.list('chart_accounts').length
+        }), setup);
+        await test('G6 全部守卫操作后会计集合仍为空（无传票写入）', async () => {
+            if (g6.vouchers || g6.expenses || g6.accounts) throw new Error(`v=${g6.vouchers} e=${g6.expenses} a=${g6.accounts}`);
         });
 
-        // ---- G7 已过账传票禁删 ----
-        const g7 = await db(page, () => {
-            const v = DB.list('vouchers').find(x => x.status === '已过账');
-            Pages.deleteVoucher(v.id);
-            const still = !!DB.get('vouchers', v.id);
-            document.querySelectorAll('.modal-mask').forEach(m => m.remove());
-            return still;
-        });
-        await test('G7 已过账传票禁止删除', async () => {
-            if (!g7) throw new Error('已过账传票被删除');
+        // ---- G7 会计 API 已移除 ----
+        const g7 = await db(page, () => ({
+            acct: typeof ACCT !== 'undefined',
+            delVoucher: typeof Pages.deleteVoucher !== 'undefined'
+        }));
+        await test('G7 ACCT 与 Pages.deleteVoucher 均已移除', async () => {
+            if (g7.acct) throw new Error('ACCT 仍存在');
+            if (g7.delVoucher) throw new Error('Pages.deleteVoucher 仍存在');
         });
 
-        // ---- G8 试算平衡（守卫操作后） ----
-        const g8 = await db(page, () => {
-            const m = ACCT.allAccountBalances(null);
-            return Object.values(m).reduce((s, x) => s + x.debit, 0) - Object.values(m).reduce((s, x) => s + x.credit, 0);
-        });
-        await test('G8 全部守卫操作后试算表仍平衡', async () => {
-            if (Math.abs(g8) > 0.01) throw new Error('差 ' + g8);
+        // ---- G8 守卫操作后业务数据一致（订单/采购单状态正确） ----
+        const g8 = await db(page, (a) => ({
+            so: DB.get('sales_orders', a.soId).payment_status,
+            po: DB.get('purchase_orders', a.poId).payment_status
+        }), setup);
+        await test('G8 守卫操作后收付款状态一致（SO paid / PO unpaid）', async () => {
+            if (g8.so !== 'paid') throw new Error('SO payment_status = ' + g8.so);
+            if (g8.po !== 'unpaid') throw new Error('PO payment_status = ' + g8.po);
         });
 
         // 清理

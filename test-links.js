@@ -1,10 +1,11 @@
 // ERP 联动一致性自动化测试
 // 覆盖：进货↔库存↔应付、出货↔库存↔应收、单位换算率、外币折本位币、
-//       销退↔库存回补/成本冲回/收款状态、超退限制、收款/付款口径、传票守卫、删除保护、报表口径统一
-// 运行前提：本地服务器 http://127.0.0.1:8902（python -m http.server 8902 -d erp-clone）
+//       销退↔库存回补/成本冲回/收款状态、超退限制、收款/付款口径、
+//       传票/费用模块移除验证、删除保护、仪表板毛利口径（会计模块已移除）
+// 运行前提：本地服务器 http://127.0.0.1:8904（cd erp-clone && node serve.js 8904 .）
 const { chromium } = require('playwright');
 
-const BASE = 'http://127.0.0.1:8902';
+const BASE = process.env.BASE || 'http://127.0.0.1:8902';
 let pass = 0, fail = 0, failures = [];
 const errors = [];
 
@@ -194,9 +195,8 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   check(near(data2.itb, 48), `出货后 it_b 库存 = 50 - 2 = 48 (实际 ${data2.itb})`);
   check(data2.o.status === 'shipped', 'USD 订单已出货');
 
-  // ========== 5. 损益表口径（外币折本位币 + 成本乘换算率） ==========
-  console.log('\n[5] 损益表：营收 300 + 100×7.2 = 1020；COGS = 10×2×10 + 2×1×36 = 272');
-  await gotoHash('#/accounting/income-statement');
+  // ========== 5. 经营口径（外币折本位币 + 成本乘换算率，会计模块已移除后数据层验证） ==========
+  console.log('\n[5] 经营口径：营收 300 + 100×7.2 = 1020；COGS = 10×2×10 + 2×1×36 = 272');
   const inc = await db(() => {
     // 直接调用页面相同的计算逻辑（本位币口径；收入按出货日期归属）
     const month = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0');
@@ -213,9 +213,6 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   check(inc.rateUSD === 7.2, 'USD 汇率 7.2 读取正常');
   check(near(inc.revenue, 1020), `营收折本位币 = 300 + 100×7.2 = 1020 (实际 ${inc.revenue})`);
   check(near(inc.cogs, 272), `销货成本 = 10箱×2×10 + 2个×1×36 = 272 (实际 ${inc.cogs})`);
-  // UI KPI 显示同步
-  const kpiText = await bodyText();
-  check(kpiText.includes('1,020.00') || kpiText.includes('1020.00'), '损益表营收 KPI 显示本位币 1020');
 
   // ========== 6. 销货退回 → 库存回补 + 成本冲回 + 应收冲减 + 收款状态回写 ==========
   console.log('\n[6] 销货退回：库存回补(×换算率)、成本冲回(折本位币)、冲减应收、收款状态回写');
@@ -307,59 +304,19 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   check(payPONow.status === 'paid', `付款状态 = paid (${payPONow.status})`);
   check(payPONow.method === '银行转账' && payPONow.date === '2026-08-19', `付款方式/日期已入账 (${payPONow.method}/${payPONow.date})`);
 
-  // ========== 10. 传票守卫：强制未过账 + 过账回写 + 已过账禁删 ==========
-  console.log('\n[10] 传票守卫：保存强制未过账、过账回写费用、已过账禁删');
-  // 先建一笔费用用于过账回写验证
-  await gotoHash('#/expenses/create');
-  await page.locator('[name=type]').selectOption('物流费');
-  await page.locator('[name=account]').selectOption('销售费用');
-  await page.locator('[name=amount]').fill('88');
-  await page.locator('button[type=submit]').click();
-  await page.waitForTimeout(900);
-  const ex = await db(() => { const e = DB.list('expenses')[0]; return e ? { id: e.id, no: e.no } : null; });
-  check(!!ex, `费用已建立 (${ex ? ex.no : '-'})`);
-
+  // ========== 10. 传票/费用模块已移除 ==========
+  console.log('\n[10] 传票/费用模块已移除：路由回首页 + 集合清空');
   await gotoHash('#/accounting/vouchers/create');
-  await page.locator('[name=source]').selectOption('费用支出');
-  await page.locator('[name=source_no]').fill(ex.no);
-  await page.locator('[name=counterparty]').fill('物流公司');
-  // 状态下拉应只有「未过账」且不可改
-  const statusDisabled = await page.locator('[name=status]').isDisabled().catch(() => false);
-  check(statusDisabled, '传票表单状态下拉已禁用（只能保存未过账）');
-  const line1 = page.locator('#voucherLines tbody tr').nth(0);
-  await line1.locator('[name="account[]"]').selectOption('销售费用');
-  await line1.locator('[name="debit[]"]').fill('88');
-  const line2 = page.locator('#voucherLines tbody tr').nth(1);
-  await line2.locator('[name="account[]"]').selectOption('银行存款');
-  await line2.locator('[name="credit[]"]').fill('88');
-  await page.waitForTimeout(300);
-  await page.locator('button[type=submit]').click();
-  await page.waitForTimeout(900);
-  const vc = await db(() => {
-    const v = DB.list('vouchers').filter(x => x.status === '未过账').sort((a, b) => b.no.localeCompare(a.no))[0];
-    return v ? { id: v.id, no: v.no, status: v.status } : null;
-  });
-  check(!!vc && vc.status === '未过账', `传票保存后强制未过账 (${vc ? vc.no : '-'} 状态=${vc ? vc.status : ''})`);
-
-  // 过账 → 费用 voucher_no 回写
+  const vGoneText = (await toastText()) + (await bodyText());
+  check(vGoneText.includes('找不到该页面') || vGoneText.includes('上线检核仪表板'), '传票新增路由已移除');
   await gotoHash('#/accounting/vouchers');
-  await page.locator(`tr:has-text("${vc.no}") button:has-text("过账")`).click();
-  await page.waitForTimeout(300);
-  await confirmOk();
-  const postInfo = await db(arg => {
-    const v = DB.get('vouchers', arg.vid);
-    const e = DB.find('expenses', x => x.no === arg.no);
-    return { vStatus: v.status, exVoucherNo: e ? e.voucher_no : null };
-  }, { vid: vc.id, no: ex.no });
-  check(postInfo.vStatus === '已过账', '传票已过账');
-  check(postInfo.exVoucherNo === vc.no, `过账后费用传票号回写 (${postInfo.exVoucherNo})`);
-
-  // 已过账传票禁删
-  await gotoHash('#/accounting/vouchers');
-  await page.locator(`tr:has-text("${vc.no}") button:has-text("删除")`).click();
-  await page.waitForTimeout(300);
-  const delVToast = await toastText();
-  check(delVToast.includes('已过账') || delVToast.includes('不能删除'), `已过账传票删除被拒 (${delVToast})`);
+  const vGoneText2 = (await toastText()) + (await bodyText());
+  check(vGoneText2.includes('找不到该页面') || vGoneText2.includes('上线检核仪表板'), '传票列表路由已移除');
+  await gotoHash('#/expenses/create');
+  const exGoneText = (await toastText()) + (await bodyText());
+  check(exGoneText.includes('找不到该页面') || exGoneText.includes('上线检核仪表板'), '费用支出路由已移除');
+  const collEmpty = await db(() => DB.list('vouchers').length === 0 && DB.list('expenses').length === 0 && DB.list('chart_accounts').length === 0);
+  check(collEmpty, 'vouchers/expenses/chart_accounts 集合均为空');
 
   // ========== 11. 删除保护 ==========
   console.log('\n[11] 删除保护：仓库有库存禁删、币别被引用禁删、客户被引用禁删、空仓库可删');
@@ -398,22 +355,15 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   const tmpGone = await db(() => !DB.list('warehouses').some(w => w.id === 'wh_tmp'));
   check(tmpGone, '无库存空仓库可正常删除');
 
-  // ========== 12. 仪表板与损益表口径一致 ==========
-  console.log('\n[12] 仪表板本月损益 = 损益表净利润（口径统一）');
-  // 净利润 = (1020 - 60) - (272 - 40) - 0 = 728
-  // 净利润 = (营收1020 - 退货60) - (成本272 - 成本冲回40) - 费用88 = 640
-  const expectProfit = (1020 - 60) - (272 - 40) - 88;
+  // ========== 12. 仪表板本月毛利口径（损益表已移除，毛利 = 净营收 - 销货成本净额） ==========
+  console.log('\n[12] 仪表板本月毛利 = (营收1020 - 退货60) - (成本272 - 成本冲回40) = 728');
+  const expectProfit = (1020 - 60) - (272 - 40);
   await gotoHash('#/dashboard');
   const dashText = await bodyText();
-  const dashProfitMatch = dashText.match(/本月损益\s*([\d,.-]+)/);
+  const dashProfitMatch = dashText.match(/本月毛利\s*([\d,.-]+)/);
   const dashProfit = dashProfitMatch ? parseFloat(dashProfitMatch[1].replace(/,/g, '')) : NaN;
-  check(near(dashProfit, expectProfit), `仪表板本月损益 = ${expectProfit} (实际 ${dashProfit})`);
-  await gotoHash('#/accounting/income-statement');
-  const incText = await bodyText();
-  const incProfitMatch = incText.match(/净利润\s*([\d,.-]+)/);
-  const incProfit = incProfitMatch ? parseFloat(incProfitMatch[1].replace(/,/g, '')) : NaN;
-  check(near(incProfit, expectProfit), `损益表净利润 = ${expectProfit} (实际 ${incProfit})`);
-  check(near(dashProfit, incProfit), '仪表板与损益表口径完全一致');
+  check(near(dashProfit, expectProfit), `仪表板本月毛利 = ${expectProfit} (实际 ${dashProfit})`);
+  check(!dashText.includes('损益表'), '仪表板不再出现损益表入口/文案');
 
   // ========== 汇总 ==========
   console.log('\n================ 汇总 ================');

@@ -115,7 +115,7 @@ Pages.salesOrders = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>销货订单</h1><p>订单负责成交、出货与应收依据；核账与传票留在财务流程。</p></div>
+        <div><h1>销货订单</h1><p>订单负责成交、出货与应收依据；收款登记在应收账款。</p></div>
         <div class="head-actions">
             ${can("sales.create") ? `<a class="btn primary" href="#/sales-orders/create">+ 新增销货订单</a>` : ""}
             <a class="btn ghost" href="#/accounting/accounts-receivable">应收账款</a>
@@ -419,10 +419,6 @@ Pages.doShip = function (id) {
         lines: o.lines.map(l => Object.assign({}, l)),
         remark: "", created_by: DB.currentUser().name
     });
-    // 会计联动：自动生成出货收入/成本复式传票
-    if (typeof ACCT !== "undefined" && ACCT && ACCT.onShipment) {
-        try { ACCT.onShipment(shipment, o); } catch (e) { }
-    }
 
     // 更新订单状态
     DB.update("sales_orders", o.id, { status: "shipped", logistics_method: log, shipment_no: shipNo });
@@ -443,7 +439,7 @@ Pages.salesOrderForm = function (id) {
     const content = `
     <div class="page-head">
         <div><h2>销货订单｜${isEdit ? "编辑" : "新增"}</h2>
-        <p>订单负责成交、出货与应收依据；核账与传票留在财务流程，避免订单画面过度复杂。</p></div>
+        <p>订单负责成交、出货与应收依据；收款登记在应收账款，避免订单画面过度复杂。</p></div>
         <div class="actions">
             <a class="btn" href="#/sales-orders">返回订单</a>
             <a class="btn" href="#/accounting/accounts-receivable">应收账款</a>
@@ -475,7 +471,7 @@ Pages.salesOrderForm = function (id) {
             <ul>
                 <li>平台或散客订单可使用 WALKIN 客户，收件人会显示在出货单上。</li>
                 <li>平台手续费、金流手续费与其他费用会影响预估实收与损益。</li>
-                <li>收款与传票后续由应收账款与传票作业处理。</li>
+                <li>收款后续由应收账款登记处理。</li>
             </ul>
         </div>
 
@@ -891,10 +887,6 @@ Pages.deleteShipment = function (id) {
         });
         DB.remove("shipments", id);
         if (o) DB.update("sales_orders", o.id, { status: "draft", logistics_method: "", shipment_no: "" });
-        // 会计联动：作废该出货单对应的自动传票（收入/成本分录随业务回退）
-        if (typeof ACCT !== "undefined" && ACCT && ACCT.voidVouchers) {
-            try { ACCT.voidVouchers("SHIP:" + id); } catch (e) { }
-        }
         toast("出货单已删除，库存已回冲", "success");
         render();
     }, "删除出货单");
@@ -1021,10 +1013,6 @@ Pages.receivePO = function (id) {
             DB.addStock(o.warehouse_id, l.item_id, Utils.num(l.qty) * rate);
         });
         DB.update("purchase_orders", o.id, { status: "received" });
-        // 会计联动：自动生成进货/应付复式传票
-        if (typeof ACCT !== "undefined" && ACCT && ACCT.onPOReceive) {
-            try { ACCT.onPOReceive(o); } catch (e) { }
-        }
         toast(`采购单 ${o.no} 已进货入库`, "success");
         render();
     }, "进货入库");
@@ -1277,10 +1265,6 @@ Pages.deleteAdj = function (id) {
     confirmModal("确定要删除这笔库存调整记录吗？删除后库存将按原数量反向冲销。", () => {
         a.lines.forEach(l => { DB.addStock(a.warehouse_id, l.item_id, -Utils.num(l.qty)); });
         DB.remove("inventory_adjusts", id);
-        // 会计联动：作废该调整单对应的自动传票（库存商品/待处理财产损溢分录随业务回退）
-        if (typeof ACCT !== "undefined" && ACCT && ACCT.voidVouchers) {
-            try { ACCT.voidVouchers("ADJ:" + id); } catch (e) { }
-        }
         toast("已删除，库存已回冲", "success");
         render();
     });
@@ -1409,10 +1393,6 @@ Pages.saveAdj = function (e) {
         type: data.type, source_type: data.source_type || "", source_no: data.source_no || "",
         lines, remark: data.remark || "", created_by: DB.currentUser().name
     });
-    // 会计联动：自动生成库存调整传票（库存商品 vs 待处理财产损溢）
-    if (typeof ACCT !== "undefined" && ACCT && ACCT.onAdjust) {
-        try { ACCT.onAdjust(adj); } catch (e) { }
-    }
     toast("库存调整已保存并更新库存", "success");
     setTimeout(() => { location.hash = "#/inventory/inventory_adjust"; }, 300);
 };
@@ -1587,7 +1567,7 @@ Pages.saveSalesReturn = function (e) {
     const costReversal = lines.reduce((s, l) => {
         const it = DB.itemByCode(l.code);
         const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
-        // 成本按采购币别汇率折合本位币，与损益表/仪表板口径一致
+        // 成本按采购币别汇率折合本位币，与仪表板口径一致
         return s + Utils.num(l.qty) * rate * itemCostCNY(it);
     }, 0);
 
@@ -1608,10 +1588,6 @@ Pages.saveSalesReturn = function (e) {
         cost_reversal: Utils.round(costReversal), remark: data.remark || "",
         created_by: DB.currentUser().name
     });
-    // 会计联动：自动生成销货退回传票（冲收入/冲应收/回冲成本与库存）
-    if (typeof ACCT !== "undefined" && ACCT && ACCT.onSalesReturn) {
-        try { ACCT.onSalesReturn(sr, so); } catch (e) { }
-    }
     // 冲减应收时，同步回写订单收款状态（未收重新计算，已收超限则退回未收状态）
     if (data.offset_receivable === "1") {
         const received = Utils.num(so.received_amount);
@@ -1797,10 +1773,6 @@ Pages.savePurchaseReturn = function (e) {
         offset_payable: data.offset_payable === "1", remark: data.remark || "",
         created_by: DB.currentUser().name
     });
-    // 会计联动：自动生成采购退回传票（冲应付/冲库存）
-    if (typeof ACCT !== "undefined" && ACCT && ACCT.onPurchaseReturn) {
-        try { ACCT.onPurchaseReturn(pr, po); } catch (e) { }
-    }
     // 冲减应付时，同步回写采购单付款状态（已付重新计算，超限则退回未付状态）
     if (data.offset_payable === "1") {
         const paid = Utils.num(po.paid_amount);

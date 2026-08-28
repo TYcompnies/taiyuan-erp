@@ -562,7 +562,7 @@ const CloudSync = {
         }
     },
     _businessEmpty() {
-        const cols = ["items", "sales_orders", "shipments", "purchase_orders", "inventory_adjusts", "sales_returns", "purchase_returns", "expenses", "vouchers"];
+        const cols = ["items", "sales_orders", "shipments", "purchase_orders", "inventory_adjusts", "sales_returns", "purchase_returns"];
         return cols.every(c => !(DB._mem[c] || []).length);
     },
     async applyRemote(snap) {

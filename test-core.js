@@ -74,7 +74,7 @@ assert(DB.session().user_id === 'u_adm', '会话保存/读取正常');
 assert(DB.currentUser() && DB.currentUser().id === 'u_adm', '当前用户解析正常');
 
 console.log('=== 6. 权限 ===');
-assert(PERMISSIONS.length >= 30, '权限代码 >= 30 个');
+assert(PERMISSIONS.length >= 25, '权限代码 >= 25 个（会计模块移除后 29）');
 const adminRole = coll('roles').find(r => r.id === 'r1');
 assert(adminRole && adminRole.permissions.length === PERMISSIONS.length, '系统管理员角色拥有全部权限');
 

@@ -101,7 +101,7 @@ const DB = {
             this._mem.dbVersion = 2;
             this.flush();
         }
-        this.migrateAccounting();
+        this.purgeAccounting();
         this.migrateAttendance();
         this._loaded = true;
     },
@@ -118,43 +118,19 @@ const DB = {
         if (dirty) this.flush();
     },
 
-    /* 会计模块迁移：旧数据补入会计科目表与角色权限（不动业务数据） */
-    migrateAccounting() {
+    /* 会计模块移除迁移（2026-08-28）：清空会计数据集合并从所有角色移除会计权限（幂等，可随云同步扩散到全部设备） */
+    purgeAccounting() {
         let dirty = false;
-        if (!this._mem.chart_accounts || !this._mem.chart_accounts.length) {
-            const now = Utils.now();
-            this._mem.chart_accounts = [
-                { id: "a1001", code: "1001", name: "库存现金", type: "资产", direction: "借", is_cash: true, remark: "零用金/现金收支", created_at: now },
-                { id: "a1002", code: "1002", name: "银行存款", type: "资产", direction: "借", is_cash: true, remark: "银行账户收支", created_at: now },
-                { id: "a1122", code: "1122", name: "应收账款", type: "资产", direction: "借", is_cash: false, remark: "客户赊销未收款", created_at: now },
-                { id: "a1123", code: "1123", name: "预付账款", type: "资产", direction: "借", is_cash: false, remark: "预付供应商货款", created_at: now },
-                { id: "a1405", code: "1405", name: "库存商品", type: "资产", direction: "借", is_cash: false, remark: "存货成本", created_at: now },
-                { id: "a1601", code: "1601", name: "固定资产", type: "资产", direction: "借", is_cash: false, remark: "设备购置", created_at: now },
-                { id: "a1901", code: "1901", name: "待处理财产损溢", type: "资产", direction: "借", is_cash: false, remark: "盘点差异暂记", created_at: now },
-                { id: "a2001", code: "2001", name: "短期借款", type: "负债", direction: "贷", is_cash: false, remark: "", created_at: now },
-                { id: "a2202", code: "2202", name: "应付账款", type: "负债", direction: "贷", is_cash: false, remark: "供应商未付款", created_at: now },
-                { id: "a2221", code: "2221", name: "应交税费", type: "负债", direction: "贷", is_cash: false, remark: "销项/进项税额", created_at: now },
-                { id: "a2501", code: "2501", name: "长期借款", type: "负债", direction: "贷", is_cash: false, remark: "", created_at: now },
-                { id: "a4001", code: "4001", name: "实收资本", type: "权益", direction: "贷", is_cash: false, remark: "股东投入", created_at: now },
-                { id: "a4104", code: "4104", name: "未分配利润", type: "权益", direction: "贷", is_cash: false, remark: "期初导入/历史损益调整", created_at: now },
-                { id: "a6001", code: "6001", name: "主营业务收入", type: "损益", direction: "贷", is_cash: false, remark: "销货收入", created_at: now },
-                { id: "a6401", code: "6401", name: "主营业务成本", type: "损益", direction: "借", is_cash: false, remark: "销货成本", created_at: now },
-                { id: "a6601", code: "6601", name: "销售费用", type: "损益", direction: "借", is_cash: false, remark: "物流/平台/广告/包装", created_at: now },
-                { id: "a6602", code: "6602", name: "管理费用", type: "损益", direction: "借", is_cash: false, remark: "房租/水电/办公/工资/差旅", created_at: now },
-                { id: "a6711", code: "6711", name: "营业外支出", type: "损益", direction: "借", is_cash: false, remark: "", created_at: now },
-                { id: "a6999", code: "6999", name: "其他费用", type: "损益", direction: "借", is_cash: false, remark: "", created_at: now }
-            ];
-            dirty = true;
-        }
-        // 补齐角色的新会计权限（r1 全量刷新，r5 会计补财务报表权限）
-        const newPerms = ["finance.account", "finance.ledger", "finance.balance", "system.sync"];
+        // 1) 清空会计/费用数据集合（科目、传票、费用支出）
+        ["chart_accounts", "vouchers", "expenses"].forEach(k => {
+            if (this._mem[k] && this._mem[k].length) { this._mem[k] = []; dirty = true; }
+        });
+        // 2) 从所有角色移除已下线的会计权限（含 r1 全量管理员）
+        const gone = ["finance.account", "finance.ledger", "finance.balance", "finance.voucher", "finance.income", "finance.expense"];
         (this._mem.roles || []).forEach(r => {
-            if (r.id === "r1") {
-                const all = PERMISSIONS.map(p => p.code);
-                if (all.some(pc => !(r.permissions || []).includes(pc))) { r.permissions = all; dirty = true; }
-            } else if (r.id === "r5") {
-                newPerms.slice(0, 3).forEach(pc => { if (!(r.permissions || []).includes(pc)) { r.permissions.push(pc); dirty = true; } });
-            }
+            const before = (r.permissions || []).length;
+            r.permissions = (r.permissions || []).filter(pc => !gone.includes(pc));
+            if (r.permissions.length !== before) dirty = true;
         });
         if (dirty) this.flush();
     },
@@ -276,8 +252,7 @@ const DB = {
     clearBusiness() {
         const m = this._mem || (this.load(), this._mem);
         ["items", "sales_orders", "shipments", "purchase_orders",
-            "inventory_adjusts", "sales_returns", "purchase_returns",
-            "expenses", "vouchers"].forEach(k => { if (m[k]) m[k] = []; });
+            "inventory_adjusts", "sales_returns", "purchase_returns"].forEach(k => { if (m[k]) m[k] = []; });
         m.stock = {};
         this.flush();
         return true;
@@ -302,12 +277,6 @@ const PERMISSIONS = [
     { code: "attendance.view", label: "出勤管理", group: "出勤管理" },
     { code: "finance.ar", label: "应收账款", group: "账款财务" },
     { code: "finance.ap", label: "应付账款", group: "账款财务" },
-    { code: "finance.expense", label: "费用支出", group: "账款财务" },
-    { code: "finance.voucher", label: "传票作业", group: "账款财务" },
-    { code: "finance.income", label: "损益表", group: "账款财务" },
-    { code: "finance.account", label: "会计科目", group: "账款财务" },
-    { code: "finance.ledger", label: "总分类账", group: "账款财务" },
-    { code: "finance.balance", label: "试算表/资产负债表", group: "账款财务" },
     { code: "master.item", label: "商品主档", group: "基本资料" },
     { code: "master.customer", label: "客户主档", group: "基本资料" },
     { code: "master.supplier", label: "供应商主档", group: "基本资料" },
@@ -391,29 +360,6 @@ DB.seed = function () {
         { id: "t7", name: "平台已付款", days: 0, remark: "淘宝/拼多多/抖音平台订单已付款", created_at: now }
     ];
 
-    /* ---- 会计科目（标准科目表，含现金科目标记与借贷方向） ---- */
-    m.chart_accounts = [
-        { id: "a1001", code: "1001", name: "库存现金", type: "资产", direction: "借", is_cash: true, remark: "零用金/现金收支", created_at: now },
-        { id: "a1002", code: "1002", name: "银行存款", type: "资产", direction: "借", is_cash: true, remark: "银行账户收支", created_at: now },
-        { id: "a1122", code: "1122", name: "应收账款", type: "资产", direction: "借", is_cash: false, remark: "客户赊销未收款", created_at: now },
-        { id: "a1123", code: "1123", name: "预付账款", type: "资产", direction: "借", is_cash: false, remark: "预付供应商货款", created_at: now },
-        { id: "a1405", code: "1405", name: "库存商品", type: "资产", direction: "借", is_cash: false, remark: "存货成本", created_at: now },
-        { id: "a1601", code: "1601", name: "固定资产", type: "资产", direction: "借", is_cash: false, remark: "设备购置", created_at: now },
-        { id: "a1901", code: "1901", name: "待处理财产损溢", type: "资产", direction: "借", is_cash: false, remark: "盘点差异暂记", created_at: now },
-        { id: "a2001", code: "2001", name: "短期借款", type: "负债", direction: "贷", is_cash: false, remark: "", created_at: now },
-        { id: "a2202", code: "2202", name: "应付账款", type: "负债", direction: "贷", is_cash: false, remark: "供应商未付款", created_at: now },
-        { id: "a2221", code: "2221", name: "应交税费", type: "负债", direction: "贷", is_cash: false, remark: "销项/进项税额", created_at: now },
-        { id: "a2501", code: "2501", name: "长期借款", type: "负债", direction: "贷", is_cash: false, remark: "", created_at: now },
-        { id: "a4001", code: "4001", name: "实收资本", type: "权益", direction: "贷", is_cash: false, remark: "股东投入", created_at: now },
-        { id: "a4104", code: "4104", name: "未分配利润", type: "权益", direction: "贷", is_cash: false, remark: "期初导入/历史损益调整", created_at: now },
-        { id: "a6001", code: "6001", name: "主营业务收入", type: "损益", direction: "贷", is_cash: false, remark: "销货收入", created_at: now },
-        { id: "a6401", code: "6401", name: "主营业务成本", type: "损益", direction: "借", is_cash: false, remark: "销货成本", created_at: now },
-        { id: "a6601", code: "6601", name: "销售费用", type: "损益", direction: "借", is_cash: false, remark: "物流/平台/广告/包装", created_at: now },
-        { id: "a6602", code: "6602", name: "管理费用", type: "损益", direction: "借", is_cash: false, remark: "房租/水电/办公/工资/差旅", created_at: now },
-        { id: "a6711", code: "6711", name: "营业外支出", type: "损益", direction: "借", is_cash: false, remark: "", created_at: now },
-        { id: "a6999", code: "6999", name: "其他费用", type: "损益", direction: "借", is_cash: false, remark: "", created_at: now }
-    ];
-
     /* ---- 商品（初始为空，由用户自行建立） ---- */
     m.items = [];
 
@@ -442,9 +388,9 @@ DB.seed = function () {
     m.roles = [
         { id: "r1", name: "系统管理员", description: "拥有全部系统权限", permissions: PERMISSIONS.map(p => p.code), created_at: now },
         { id: "r2", name: "管理者", description: "管理日常业务与报表", permissions: PERMISSIONS.filter(p => !p.code.startsWith("system.") && p.code !== "system.migration" && p.code !== "system.backup").map(p => p.code), created_at: now },
-        { id: "r3", name: "业务", description: "负责销货订单与客户", permissions: ["dashboard.view", "sales.view", "sales.create", "sales_return.view", "master.item", "master.customer", "report.inventory", "report.safety", "finance.ar", "finance.income"], created_at: now },
+        { id: "r3", name: "业务", description: "负责销货订单与客户", permissions: ["dashboard.view", "sales.view", "sales.create", "sales_return.view", "master.item", "master.customer", "report.inventory", "report.safety", "finance.ar"], created_at: now },
         { id: "r4", name: "仓管", description: "负责出入库与库存", permissions: ["dashboard.view", "sales.view", "sales.ship", "shipment.view", "purchase.view", "purchase.receive", "inventory.view", "inventory.adjust", "master.item", "master.warehouse", "report.inventory", "report.safety"], created_at: now },
-        { id: "r5", name: "会计", description: "负责账款与财务", permissions: ["dashboard.view", "finance.ar", "finance.ap", "finance.expense", "finance.voucher", "finance.income", "finance.account", "finance.ledger", "finance.balance", "report.inventory", "report.safety"], created_at: now }
+        { id: "r5", name: "会计", description: "负责账款收付", permissions: ["dashboard.view", "finance.ar", "finance.ap", "report.inventory", "report.safety"], created_at: now }
     ];
     m.users = [
         { id: "u_adm", username: "admin", password: "admin123", name: "系统管理员", role_id: "r1", email: "admin@taiyuan.cn", phone: "13800000000", status: "启用", created_at: now, updated_at: now },
@@ -469,12 +415,6 @@ DB.seed = function () {
     m.sales_returns = [];
     /* ---- 采购退回/折让（初始为空） ---- */
     m.purchase_returns = [];
-
-    /* ---- 费用支出（初始为空） ---- */
-    m.expenses = [];
-
-    /* ---- 传票（初始为空） ---- */
-    m.vouchers = [];
 
     /* ---- 备份记录 ---- */
     m.backups = [

@@ -1,6 +1,6 @@
 /* 移动端 ☰ 菜单按钮修复验证（移动端抽屉 + 桌面端折叠双逻辑） */
 const { chromium } = require("playwright");
-const BASE = process.env.BASE || "http://127.0.0.1:8902";
+const BASE = process.env.BASE || "http://127.0.0.1:8904";
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
     if (cond) { pass++; console.log(`  ✅ ${name}`); }
@@ -18,12 +18,18 @@ async function login(page) {
         if (f) f.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
     await page.waitForTimeout(800);
+    // 等主壳完全渲染后再交互（过早点击会因冷启动渲染未就绪导致抽屉过渡不触发）
+    await page.waitForSelector(".erp-shell", { timeout: 8000 });
+    await page.waitForTimeout(600);
 }
 async function menuState(page) {
     return page.evaluate(() => {
         const sb = document.querySelector(".sidebar");
         const mask = document.querySelector(".sidebar-mask");
         if (!sb) return { rendered: false };
+        // headless 下 CSS transition 动画时钟可能冻结（无 BeginFrame，过渡停在起点值），
+        // 与逻辑无关。测量前强制收束所有过渡到最终状态，断言才具有确定性。
+        try { document.getAnimations().forEach(a => { try { a.finish(); } catch (e) { /* 无限动画不可 finish */ } }); } catch (e) {}
         const r = sb.getBoundingClientRect();
         return {
             rendered: true,

@@ -1,10 +1,10 @@
 /* ============================================================
    全功能遍历测试 test-everywhere.js
    覆盖：全部页面渲染、编辑/详情路由、删除保护、收款/付款、
-   传票过账、本位币唯一、库存调整回冲、权限路由、搜索、未知路由
+   收款/付款、传票作业已移除验证、本位币唯一、库存调整回冲、权限路由、搜索、未知路由
    ============================================================ */
 const { chromium } = require("playwright");
-const BASE = "http://127.0.0.1:8902/";
+const BASE = (process.env.BASE || "http://127.0.0.1:8902") + "/";
 
 (async () => {
     const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -74,11 +74,6 @@ const BASE = "http://127.0.0.1:8902/";
         ["#/purchase-returns/create", "采购退回-新增"],
         ["#/accounting/accounts-receivable", "应收账款"],
         ["#/accounting/accounts-payable", "应付账款"],
-        ["#/expenses", "费用支出"],
-        ["#/expenses/create", "费用支出-新增"],
-        ["#/accounting/vouchers", "传票作业"],
-        ["#/accounting/vouchers/create", "传票作业-新增"],
-        ["#/accounting/income-statement", "损益表"],
         ["#/master/items", "商品主档"],
         ["#/master/items/create", "商品主档-新增"],
         ["#/master/customers", "客户主档"],
@@ -209,37 +204,15 @@ const BASE = "http://127.0.0.1:8902/";
         ok("收款操作", false, "无可收款订单（需先有出货订单）");
     }
 
-    console.log("== 8. 传票：不平衡拦截 → 保存 → 过账 → 删除被拒 ==");
+    console.log("== 8. 传票作业已移除：路由回首页 ==");
     await page.goto(BASE + "#/accounting/vouchers/create");
-    await page.waitForTimeout(300);
-    // 第一行：借方 100
-    await page.selectOption('#voucherLines tbody tr:nth-child(1) select', "银行存款");
-    await page.fill('#voucherLines tbody tr:nth-child(1) [name="debit[]"]', "100");
-    // 第二行：贷方 80（不平衡）
-    await page.selectOption('#voucherLines tbody tr:nth-child(2) select', "应收账款");
-    await page.fill('#voucherLines tbody tr:nth-child(2) [name="credit[]"]', "80");
-    await page.click('button:has-text("保存传票")');
     await page.waitForTimeout(400);
-    ok("不平衡传票被拦截", (await page.locator("#toastWrap").textContent().catch(() => "")).includes("不平衡"));
-    // 修正为平衡
-    await page.fill('#voucherLines tbody tr:nth-child(2) [name="credit[]"]', "100");
-    await page.click('button:has-text("保存传票")');
-    await page.waitForTimeout(800);
-    ok("平衡传票保存跳列表", page.url().includes("#/accounting/vouchers"));
-    const vNo = await page.locator("#toastWrap").textContent().catch(() => "");
-    ok("传票保存提示", vNo.includes("传票已保存"));
-    // 过账
-    await page.locator('button:has-text("过账")').first().click();
-    await page.waitForTimeout(300);
-    await page.click('.modal-mask button:has-text("确定")');
-    await page.waitForTimeout(500);
-    ok("传票已过账", (await page.locator("#toastWrap").textContent().catch(() => "")).includes("已过账"));
-    // 删除被拒
-    await page.locator('button:has-text("删除")').first().click();
+    ok("传票新增路由已移除", (await page.locator("#toastWrap").textContent().catch(() => "")).includes("找不到该页面") || (await page.locator("#app").textContent()).includes("上线检核仪表板"));
+    await page.goto(BASE + "#/accounting/vouchers");
     await page.waitForTimeout(400);
-    ok("已过账传票删除被拒", (await page.locator("#toastWrap").textContent().catch(() => "")).includes("不能删除"));
-    const vModal = await page.locator(".modal-mask").count();
-    ok("未弹出确认框", vModal === 0);
+    ok("传票列表路由已移除", (await page.locator("#toastWrap").textContent().catch(() => "")).includes("找不到该页面") || (await page.locator("#app").textContent()).includes("上线检核仪表板"));
+    const vouchersGone = await db(() => DB.list("vouchers").length === 0);
+    ok("vouchers 集合已清空", vouchersGone);
 
     console.log("== 9. 本位币唯一 ==");
     const baseCount = await db(() => DB.list("currencies").filter(c => c.is_base).length);
@@ -358,13 +331,13 @@ const BASE = "http://127.0.0.1:8902/";
     await page.waitForSelector(".erp-shell", { timeout: 8000 });
     await page.goto(BASE + "#/dashboard");
     await page.waitForTimeout(400);
-    await page.fill("#sideSearch", "传票");
+    await page.fill("#sideSearch", "应收");
     await page.waitForTimeout(200);
     const menuVisible = await page.evaluate(() => {
         const links = [...document.querySelectorAll(".menu-link")];
         return links.filter(a => a.style.display !== "none").map(a => a.textContent.trim());
     });
-    ok("菜单搜索过滤", menuVisible.length >= 1 && menuVisible.every(t => t.includes("传票")), JSON.stringify(menuVisible));
+    ok("菜单搜索过滤", menuVisible.length >= 1 && menuVisible.every(t => t.includes("应收")), JSON.stringify(menuVisible));
     await page.fill("#sideSearch", "");
 
     console.log("\n===== 结果：" + pass + " 通过 / " + fail + " 失败 =====");

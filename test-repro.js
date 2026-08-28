@@ -1,6 +1,6 @@
-// 用户反馈问题复现脚本：采购单合计/库存总揽TY0001/安全库存/账款财务/损益表/出货单按钮
+// 用户反馈问题复现脚本：采购单合计/库存总揽TY0001/安全库存/账款财务/仪表板营收口径/出货单按钮
 const { chromium } = require('playwright');
-const BASE = 'http://127.0.0.1:8902';
+const BASE = process.env.BASE || 'http://127.0.0.1:8902';
 let pass = 0, fail = 0, failures = [];
 const errors = [];
 function check(cond, msg) {
@@ -135,13 +135,14 @@ function check(cond, msg) {
     });
     return true;
   });
-  await gotoHash('#/accounting/income-statement');
+  // 损益表已移除 → 改在仪表板「本月经营摘要」验证同一营收口径
+  await gotoHash('#/dashboard');
   const isHtml = await page.evaluate(() => document.body.innerHTML);
   const m2 = isHtml.match(/营收<\/span><strong>([\d,.-]+)<\/strong>/);
-  console.log('  损益表(本月) 营收:', m2 ? m2[1] : '?');
+  console.log('  仪表板经营摘要(本月) 营收:', m2 ? m2[1] : '?');
   // 本月(2026-08)应有这笔收入（8月15日出货），按出货日期归属 → 营收应为 1200
   const revenueDisplay = m2 ? m2[1].replace(/,/g, '') : '0';
-  check(parseFloat(revenueDisplay) === 1200, `损益表本月营收 ${revenueDisplay}（期望 1200，按出货日期归属）`);
+  check(parseFloat(revenueDisplay) === 1200, `仪表板本月营收 ${revenueDisplay}（期望 1200，按出货日期归属）`);
 
   // ===== 6. 应收账款 =====
   console.log('\n[5] 应收账款');

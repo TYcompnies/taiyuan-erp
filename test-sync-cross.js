@@ -105,16 +105,16 @@ async function login(page) {
             });
             if (!detailOk) throw new Error('订单明细商品未同步');
         });
-        await test('X5 设备 B 可继续编辑（出货联动正常）', async () => {
+        await test('X5 设备 B 可继续编辑（出货联动正常，不产生传票）', async () => {
             const r = await pageB.evaluate(() => {
                 const so = DB.list('sales_orders').find(o => o.no === 'SO-X-001');
                 Pages.shipOrder(so.id);
                 Pages.doShip(so.id);
-                return { st: DB.get('sales_orders', so.id).status, stock: DB.totalStock('it_x1'), shipVoucher: DB.list('vouchers').filter(v => (v.biz_key || '').indexOf('SHIP:') === 0 && v.status === '已过账').length };
+                return { st: DB.get('sales_orders', so.id).status, stock: DB.totalStock('it_x1'), vouchers: DB.list('vouchers').length };
             });
             if (r.st !== 'shipped') throw new Error('出货失败: ' + r.st);
             if (r.stock !== 97) throw new Error('库存: ' + r.stock);
-            if (r.shipVoucher !== 1) throw new Error('出货传票: ' + r.shipVoucher);
+            if (r.vouchers !== 0) throw new Error('出货产生传票（会计已移除）: ' + r.vouchers);
         });
         await test('X6 B 编辑后再反向同步回 A（双向闭环）', async () => {
             const encB = await pageB.evaluate(async () => {
@@ -128,19 +128,18 @@ async function login(page) {
                 return {
                     st: DB.list('sales_orders').find(o => o.no === 'SO-X-001').status,
                     stock: DB.totalStock('it_x1'),
-                    vouchers: DB.list('vouchers').filter(v => (v.biz_key || '').indexOf('SHIP:') === 0 && v.status === '已过账').length
+                    vouchers: DB.list('vouchers').length
                 };
             }, encB);
             if (r.st !== 'shipped') throw new Error('A 未收到出货状态: ' + r.st);
             if (r.stock !== 97) throw new Error('A 库存: ' + r.stock);
-            if (r.vouchers !== 1) throw new Error('A 出货传票: ' + r.vouchers);
+            if (r.vouchers !== 0) throw new Error('A 会计集合非空: ' + r.vouchers);
         });
-        await test('X7 同步后设备 A 试算表平衡', async () => {
-            const diff = await pageA.evaluate(() => {
-                const m = ACCT.allAccountBalances(null);
-                return Object.values(m).reduce((s, x) => s + x.debit, 0) - Object.values(m).reduce((s, x) => s + x.credit, 0);
-            });
-            if (Math.abs(diff) > 0.01) throw new Error('差 ' + diff);
+        await test('X7 同步后设备 A 会计集合仍为空（会计模块已移除）', async () => {
+            const r = await pageA.evaluate(() => ({
+                v: DB.list('vouchers').length, e: DB.list('expenses').length, a: DB.list('chart_accounts').length
+            }));
+            if (r.v || r.e || r.a) throw new Error(`v=${r.v} e=${r.e} a=${r.a}`);
         });
 
         // 清理两台设备

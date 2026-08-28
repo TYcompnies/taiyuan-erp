@@ -200,14 +200,7 @@ const MENU = [
     {
         group: "账款财务", key: "finance", items: [
             { code: "accounts_receivable", label: "应收账款", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
-            { code: "accounts_payable", label: "应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
-            { code: "expenses", label: "费用支出", hash: "#/expenses", perm: "finance.expense" },
-            { code: "vouchers", label: "传票作业", hash: "#/accounting/vouchers", perm: "finance.voucher" },
-            { code: "chart_accounts", label: "会计科目", hash: "#/accounting/accounts", perm: "finance.account" },
-            { code: "general_ledger", label: "总分类账", hash: "#/accounting/general-ledger", perm: "finance.ledger" },
-            { code: "trial_balance", label: "试算表", hash: "#/accounting/trial-balance", perm: "finance.balance" },
-            { code: "balance_sheet", label: "资产负债表", hash: "#/accounting/balance-sheet", perm: "finance.balance" },
-            { code: "income_statement", label: "损益表", hash: "#/accounting/income-statement", perm: "finance.income" }
+            { code: "accounts_payable", label: "应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" }
         ]
     },
     {
@@ -226,8 +219,7 @@ const MENU = [
     {
         group: "报表查询", key: "reports", items: [
             { code: "inventory_overview", label: "库存总览", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
-            { code: "inventory_safety", label: "安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" },
-            { code: "report_income", label: "损益表", hash: "#/accounting/income-statement", perm: "finance.income" }
+            { code: "inventory_safety", label: "安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" }
         ]
     },
     {
@@ -255,7 +247,7 @@ function renderShell(activeCode, contentHtml, breadcrumb) {
         if (!items.length) return;
         const groupOpen = items.some(it => it.code === activeCode);
         const links = items.map(it =>
-            `<a class="menu-link ${(it.code === activeCode || (it.code === "report_income" && activeCode === "income_statement")) ? "active" : ""}" data-code="${it.code}" href="${it.hash}">${it.label}</a>`
+            `<a class="menu-link ${(it.code === activeCode) ? "active" : ""}" data-code="${it.code}" href="${it.hash}">${it.label}</a>`
         ).join("");
         menuHtml += `<div class="menu-group ${groupOpen ? "open" : ""}">
             <button class="menu-main" type="button" onclick="this.parentElement.classList.toggle('open')">
@@ -390,8 +382,8 @@ function renderDashboard() {
     })).length;
     const curMissingCount = DB.list("currencies").filter(c => !c.is_base && (!c.rate || c.rate <= 0)).length;
 
-    // 本月损益（本位币口径：外币乘汇率、成本乘销售→库存换算率、冲回退货成本，与损益表一致）
-    // 联动：收入按「出货日期」归属，与损益表口径一致（跨月订单以实际出货月份计入）
+    // 本月毛利（本位币口径：外币乘汇率、成本乘销售→库存换算率、冲回退货成本）
+    // 联动：收入按「出货日期」归属（跨月订单以实际出货月份计入）
     const shipIds = new Set(DB.list("shipments").filter(s => s.ship_date >= month).map(s => s.sales_order_id));
     const shipped = orders.filter(o => o.status === "shipped" && shipIds.has(o.id));
     const revenue = shipped.reduce((s, o) => s + toCNY(o.invoice_amount, o.currency), 0);
@@ -406,8 +398,8 @@ function renderDashboard() {
         return s + toCNY(r.total_amount, so ? so.currency : "");
     }, 0);
     const returnCost = monthReturns.reduce((s, r) => s + Utils.num(r.cost_reversal), 0);
-    const expenses = DB.list("expenses").filter(e => e.date >= month).reduce((s, e) => s + Utils.num(e.amount), 0);
-    const profit = Utils.round((revenue - returnTotal) - (cogs - returnCost) - expenses);
+    // 本月毛利（会计模块已移除，费用支出不再记录：毛利 = 净营收 - 销货成本净额）
+    const profit = Utils.round((revenue - returnTotal) - (cogs - returnCost));
 
     // 应收应付（扣除已收/已付与退货/退回冲销；外币折本位币，与应收账款/应付账款页 KPI 口径一致）
     const arReturnMap = {};
@@ -428,7 +420,6 @@ function renderDashboard() {
         .reduce((s, o) => s + toCNY(Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (apReturnMap[o.id] || 0), 0), o.currency), 0);
     const apBalance = receivedPos.reduce((s, o) => s + toCNY(Utils.num(o.amount), o.currency), 0);
     const stockValue = items.reduce((s, i) => s + DB.stockValue(i.id), 0);
-    const unposted = DB.list("vouchers").filter(v => v.status === "未过账").length;
     const lastBackup = DB.list("backups").sort((a, b) => b.date.localeCompare(a.date))[0];
     const daysSinceBackup = lastBackup ? Math.max(0, Math.round((new Date(today) - new Date(lastBackup.date.slice(0, 10))) / 86400000)) : "-";
 
@@ -437,18 +428,17 @@ function renderDashboard() {
         { label: "仓库设定", count: DB.list("warehouses").length + "笔", unit: "笔", status: "ok", link: "#/master/warehouses", desc: "至少需要一个可用仓库，采购进货、销货出货与库存调整才有落点。" },
         { label: "客户资料", count: DB.list("customers").length + "笔", unit: "笔", status: "ok", link: "#/master/customers", desc: "销货订单需要客户；散客与平台订单可使用 WALKIN 客户并填实际收件资料。" },
         { label: "供应商资料", count: DB.list("suppliers").length + "笔", unit: "笔", status: "ok", link: "#/master/suppliers", desc: "采购单需要供应商，进货后才能形成应付账款。" },
-        { label: "商品成本缺漏", count: items.filter(i => !i.disabled && (!i.cost || i.cost <= 0)).length + "笔", unit: "笔", status: "ok", link: "#/master/items", desc: "销货成本会进损益表；商品成本不可空白或为 0。" },
+        { label: "商品成本缺漏", count: items.filter(i => !i.disabled && (!i.cost || i.cost <= 0)).length + "笔", unit: "笔", status: "ok", link: "#/master/items", desc: "销货成本影响毛利核算；商品成本不可空白或为 0。" },
         { label: "商品币别缺漏", count: items.filter(i => !i.disabled && !i.purchase_currency).length + "笔", unit: "笔", status: "warning", link: "#/master/items", desc: "商品采购币别会影响库存价值与销货成本人民币换算。" },
         { label: "商品单位缺漏", count: items.filter(i => !i.disabled && (!i.sales_unit || !i.purchase_unit)).length + "笔", unit: "笔", status: "warning", link: "#/master/items", desc: "采购、销售、库存单位会影响拆包与库存异动判读。" },
         { label: "负库存", count: negStock.length + "笔", unit: "笔", status: negStock.length ? "blocker" : "ok", link: "#/inventory/inventory_overview", desc: "负库存代表出货、拆包或盘点流程有资料需要修正。" },
-        { label: "已出货成本缺漏", count: costMissingCount + "笔", unit: "笔", status: costMissingCount ? "warning" : "ok", link: "#/sales-orders", desc: "已出货订单若没有成本，损益表的销货成本会低估。" },
-        { label: "外币汇率缺漏", count: curMissingCount + "笔", unit: "笔", status: curMissingCount ? "warning" : "ok", link: "#/master/currencies", desc: "外币单据与商品成本都需要汇率，才能换算人民币库存与损益。" },
+        { label: "已出货成本缺漏", count: costMissingCount + "笔", unit: "笔", status: costMissingCount ? "warning" : "ok", link: "#/sales-orders", desc: "已出货订单若没有成本，毛利核算的销货成本会低估。" },
+        { label: "外币汇率缺漏", count: curMissingCount + "笔", unit: "笔", status: curMissingCount ? "warning" : "ok", link: "#/master/currencies", desc: "外币单据与商品成本都需要汇率，才能换算人民币库存与毛利。" },
         { label: "低库存", count: lowStock.length + "笔", unit: "笔", status: lowStock.length ? "warning" : "ok", link: "#/inventory/inventory_overview", desc: "低于安全库存的品项，需要评估是否采购。" },
         { label: "待出货订单", count: pendingShip.length + "笔", unit: "笔", status: pendingShip.length ? "warning" : "ok", link: "#/sales-orders", desc: "销货订单完成出货后才会正式扣库存并形成应收。" },
         { label: "待进货采购", count: pendingReceive.length + "笔", unit: "笔", status: pendingReceive.length ? "warning" : "ok", link: "#/purchase-orders", desc: "采购单进货后才会增加库存并形成应付。" },
         { label: "未收应收", count: fmt(arUnpaid), unit: "元", status: arUnpaid ? "warning" : "ok", link: "#/accounting/accounts-receivable", desc: "出货后的未收款要在应收账款追踪。" },
         { label: "未付应付", count: fmt(apUnpaid), unit: "元", status: apUnpaid ? "warning" : "ok", link: "#/accounting/accounts-payable", desc: "进货后的未付款要在应付账款追踪。" },
-        { label: "待切传票", count: unposted + "笔", unit: "笔", status: unposted ? "warning" : "ok", link: "#/accounting/vouchers", desc: "收付款与费用传票应定期切传票，后续财务报表才完整。" },
         { label: "系统备份", count: (daysSinceBackup === "-" ? "-" : daysSinceBackup + "天"), unit: "", status: "warning", link: "#/tools/system-backup", desc: "正式使用前建议定期备份，降低数据遗失风险。" }
     ];
     const blockerCount = checks.filter(c => c.status === "blocker").length;
@@ -481,22 +471,19 @@ function renderDashboard() {
         `<h3>商品采购币别缺漏</h3>` +
         (items.filter(i => !i.disabled && !i.purchase_currency).length ? items.filter(i => !i.disabled && !i.purchase_currency).map(i => `<p><a href="#/master/items/${i.id}/edit">${h(i.code)} - ${h(i.name)}</a></p>`).join("") : `<p class="empty">没有币别缺漏。</p>`) +
         `<h3>负库存</h3>` +
-        (negStock.length ? negStock.slice(0, 8).map(i => `<p><a href="#/inventory/inventory_overview">${h(i.code)} - ${h(i.name)}：${DB.totalStock(i.id)} ${h(i.stock_unit || "")}</a></p>`).join("") : `<p class="empty">没有负库存商品。</p>`) +
-        `<h3>未过账传票</h3>` +
-        (unposted ? DB.list("vouchers").filter(v => v.status === "未过账").map(v => `<p><a href="#/accounting/vouchers">${h(v.no)} - ${h(v.source_no || "")} - ${fmt(v.lines.reduce((s, l) => s + Utils.num(l.debit), 0))}</a></p>`).join("") : `<p class="empty">没有未过账传票。</p>`);
+        (negStock.length ? negStock.slice(0, 8).map(i => `<p><a href="#/inventory/inventory_overview">${h(i.code)} - ${h(i.name)}：${DB.totalStock(i.id)} ${h(i.stock_unit || "")}</a></p>`).join("") : `<p class="empty">没有负库存商品。</p>`);
 
     const content = `
     <div class="page-head">
         <div>
             <h1>上线检核仪表板</h1>
-            <p>把订单、采购、出货、库存、账款与损益串起来检查；有阻挡项先处理，避免上线后资料不好追。</p>
+            <p>把订单、采购、出货、库存与账款串起来检查；有阻挡项先处理，避免上线后资料不好追。</p>
         </div>
         <div class="head-actions">
             <a class="btn primary" href="#/daily-workflow">日常流程</a>
             <a class="btn ghost" href="#/purchase-orders/create">新增采购单</a>
             <a class="btn primary" href="#/sales-orders/create">新增销货订单</a>
             <a class="btn ghost" href="#/inventory/inventory_adjust">拆包/组包</a>
-            <a class="btn ghost" href="#/accounting/income-statement">损益表</a>
         </div>
     </div>
 
@@ -512,7 +499,7 @@ function renderDashboard() {
         <div class="ops-flow-panel">
             <p class="eyebrow">建议日常流程</p>
             <div class="flow-steps">
-                <span>采购单</span><b>→</b><span>进货入库 / 应付</span><b>→</b><span>销货订单</span><b>→</b><span>出货扣库存 / 应收</span><b>→</b><span>收付款 / 传票 / 损益</span>
+                <span>采购单</span><b>→</b><span>进货入库 / 应付</span><b>→</b><span>销货订单</span><b>→</b><span>出货扣库存 / 应收</span><b>→</b><span>收付款</span>
             </div>
         </div>
     </section>
@@ -523,16 +510,16 @@ function renderDashboard() {
         <div class="kpi-card"><span>待进货采购</span><strong>${pendingReceive.length}</strong><p>确认后仍未进货</p></div>
         <div class="kpi-card"><span>待出货订单</span><strong>${pendingShip.length}</strong><p>订单尚未扣库存</p></div>
         <div class="kpi-card"><span>低库存商品</span><strong>${lowStock.length}</strong><p>低于安全库存</p></div>
-        <div class="kpi-card"><span>本月损益</span><strong>${fmt(profit)}</strong><p>净营收 - 销货成本净额 - 费用</p></div>
+        <div class="kpi-card"><span>本月毛利</span><strong>${fmt(profit)}</strong><p>净营收 - 销货成本净额</p></div>
     </section>
 
     <section class="launch-section-grid">
         <div class="panel">
-            <div class="panel-title"><h2>本月损益摘要</h2><a href="#/accounting/income-statement">查看损益表</a></div>
+            <div class="panel-title"><h2>本月经营摘要</h2><span style="font-size:12px;color:var(--muted)">本位币口径</span></div>
             <div class="mini-metrics">
                 <div><span>营收</span><strong>${fmt(revenue)}</strong></div>
                 <div><span>销货成本</span><strong>${fmt(cogs)}</strong></div>
-                <div><span>费用</span><strong>${fmt(expenses)}</strong></div>
+                <div><span>毛利</span><strong>${fmt(profit)}</strong></div>
                 <div><span>库存价值</span><strong>${fmt(stockValue)}</strong></div>
             </div>
         </div>
@@ -575,9 +562,8 @@ function renderDailyWorkflow() {
         { icon: "🚚", title: "出货扣库存", desc: "订单出货：扣减库存、锁定成本并建立出货单。", hash: "#/sales-orders", perm: "sales.ship" },
         { icon: "🏷️", title: "库存调整", desc: "盘点差异、拆包/组包等库存异动。", hash: "#/inventory/inventory_adjust", perm: "inventory.adjust" },
         { icon: "↩️", title: "销货退回/折让", desc: "客户退货或折让，回冲应收并增加库存。", hash: "#/sales-returns/create", perm: "sales_return.view" },
-        { icon: "💳", title: "费用支出", desc: "登记房租、物流、平台费等支出。", hash: "#/expenses/create", perm: "finance.expense" },
-        { icon: "📒", title: "传票作业", desc: "收付款与费用切传票，形成财务报表。", hash: "#/accounting/vouchers/create", perm: "finance.voucher" },
-        { icon: "📊", title: "损益表", desc: "查看收入、成本、费用与净利润。", hash: "#/accounting/income-statement", perm: "finance.income" },
+        { icon: "💰", title: "应收账款", desc: "出货订单登记收款，追踪未收金额。", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
+        { icon: "💸", title: "应付账款", desc: "进货采购登记付款，追踪未付金额。", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
         { icon: "📈", title: "库存总览", desc: "查询各仓库商品库存数量与价值。", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
         { icon: "💾", title: "系统备份", desc: "定期备份系统数据，降低遗失风险。", hash: "#/tools/system-backup", perm: "system.backup" },
         { icon: "📥", title: "Excel 导入中心", desc: "批量导入商品、客户等主档资料。", hash: "#/tools/migration-center", perm: "system.migration" }
@@ -585,13 +571,13 @@ function renderDailyWorkflow() {
 
     const content = `
     <div class="page-head">
-        <div><h1>日常流程</h1><p>从采购进货到销货出货，再到收付款与财务报表的标准作业流程。</p></div>
+        <div><h1>日常流程</h1><p>从采购进货到销货出货，再到收付款的标准作业流程。</p></div>
         <div class="head-actions"><a class="btn primary" href="#/dashboard">返回仪表板</a></div>
     </div>
     <div class="ops-flow-panel" style="margin-bottom:18px">
         <p class="eyebrow">标准作业流程</p>
         <div class="flow-steps">
-            <span>采购单</span><b>→</b><span>进货入库 / 应付</span><b>→</b><span>销货订单</span><b>→</b><span>出货扣库存 / 应收</span><b>→</b><span>收付款 / 传票 / 损益</span>
+            <span>采购单</span><b>→</b><span>进货入库 / 应付</span><b>→</b><span>销货订单</span><b>→</b><span>出货扣库存 / 应收</span><b>→</b><span>收付款</span>
         </div>
     </div>
     <div class="flow-card-grid">
@@ -648,16 +634,6 @@ function route(hash) {
         "purchase-returns/create": () => Pages.purchaseReturnForm(),
         "accounting/accounts-receivable": () => Pages.accountsReceivable(),
         "accounting/accounts-payable": () => Pages.accountsPayable(),
-        "expenses": () => Pages.expenses(),
-        "expenses/create": () => Pages.expenseForm(),
-        "accounting/vouchers": () => Pages.vouchers(),
-        "accounting/vouchers/create": () => Pages.voucherForm(),
-        "accounting/income-statement": () => Pages.incomeStatement(),
-        "accounting/accounts": () => Pages.chartAccounts(),
-        "accounting/accounts/create": () => Pages.chartAccountForm(),
-        "accounting/general-ledger": () => Pages.generalLedger(),
-        "accounting/trial-balance": () => Pages.trialBalance(),
-        "accounting/balance-sheet": () => Pages.balanceSheet(),
         "tools/cloud-sync": () => Pages.cloudSync(),
         "attendance": () => Pages.attendancePage(),
         "master/items": () => Pages.items(),
@@ -711,8 +687,7 @@ function route(hash) {
             "master/suppliers": () => Pages.supplierForm(id),
             "master/warehouses": () => Pages.warehouseForm(id),
             "users": () => Pages.userForm(id),
-            "roles": () => Pages.roleForm(id),
-            "accounting/accounts": () => Pages.chartAccountForm(id)
+            "roles": () => Pages.roleForm(id)
         };
         if (map[base]) {
             const perm = permForPath(base);

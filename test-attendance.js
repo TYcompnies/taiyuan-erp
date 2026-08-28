@@ -237,13 +237,13 @@ async function getFrame(page) {
         if (!count) throw new Error('仪表板 KPI 未渲染');
     });
 
-    // ===== 15. ERP 会计模块不受影响 =====
-    await test('ERP 会计模块不受影响（科目页正常）', async () => {
-        await gotoHash(page, '#/accounting/accounts');
+    // ===== 15. ERP 账款模块不受影响（会计模块已移除，验证 AR 页正常） =====
+    await test('ERP 账款模块不受影响（应收账款页正常）', async () => {
+        await gotoHash(page, '#/accounting/accounts-receivable');
         await page.waitForTimeout(1000);
         const content = await page.locator('.content').textContent();
-        if (!content.includes('会计科目') && !content.includes('科目'))
-            throw new Error('会计科目页内容异常');
+        if (!content.includes('应收') && !content.includes('收款'))
+            throw new Error('应收账款页内容异常');
     });
 
     await browser.close();

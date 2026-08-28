@@ -6,7 +6,7 @@
    数字不再被误读为销售单位「箱」。
    ============================================================ */
 const { chromium } = require("playwright");
-const BASE = "http://127.0.0.1:8902";
+const BASE = process.env.BASE || "http://127.0.0.1:8902";
 
 let pass = 0, fail = 0;
 const check = (cond, msg) => {

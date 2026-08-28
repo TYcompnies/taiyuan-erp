@@ -2,7 +2,7 @@
 // 模拟真实操作：登录边界 → 销货订单(建/编/校验/出货) → 采购(建/进货) → 库存调整 → 费用 → 传票 → 主档CRUD → 持久化 → 深色模式
 const { chromium } = require('playwright');
 
-const BASE = 'http://127.0.0.1:8902';
+const BASE = process.env.BASE || 'http://127.0.0.1:8902';
 let pass = 0, fail = 0, failures = [];
 const errors = [];
 
@@ -195,51 +195,29 @@ function check(cond, msg) {
   check(Math.abs(afterAdj.stock - (afterRecv.stock + 5)) < 0.0001, `调整后库存正确 (${afterRecv.stock} → ${afterAdj.stock})`);
   check(!!afterAdj.adj && afterAdj.adj.after === afterAdj.stock, '调整记录 before/after 正确');
 
-  // ========== 9. 费用支出 ==========
-  console.log('\n[9] 费用支出');
-  const exBefore = (await db(() => DB.list('expenses').length));
+  // ========== 9. 费用支出（会计模块已移除：验证路由已下线）==========
+  console.log('\n[9] 费用支出（已移除）');
   await gotoHash('#/expenses/create');
-  await page.locator('[name=type]').selectOption('办公费');
-  await page.locator('[name=account]').selectOption('管理费用');
-  await page.locator('[name=amount]').fill('666.66');
-  await page.locator('button[type=submit]').click();
-  await page.waitForTimeout(900);
-  const ex = await db(() => {
-    const e = DB.list('expenses').sort((a, b) => b.no.localeCompare(a.no))[0];
-    return e ? { no: e.no, amount: e.amount } : null;
-  });
-  check(!!ex && /^EX\d{11}$/.test(ex.no), '费用已保存: ' + (ex && ex.no));
-  check(ex && Math.abs(ex.amount - 666.66) < 0.01, '费用金额正确');
+  await page.waitForTimeout(600);
+  const t9 = await page.evaluate(() => document.body.textContent);
+  check(t9.includes('找不到该页面') || t9.includes('上线检核仪表板'), '费用支出路由已移除（回首页）');
 
-  // ========== 10. 传票（不平衡拦截 + 保存 + 过账）==========
-  console.log('\n[10] 传票作业');
+  // ========== 10. 传票作业（会计模块已移除：验证路由已下线）==========
+  console.log('\n[10] 传票作业（已移除）');
   await gotoHash('#/accounting/vouchers/create');
-  // 两行分录借贷不平衡
-  await page.locator('#voucherLines tbody tr').nth(0).locator('[name="account[]"]').selectOption('应收账款');
-  await page.locator('#voucherLines tbody tr').nth(0).locator('[name="debit[]"]').fill('100');
-  await page.locator('#voucherLines tbody tr').nth(1).locator('[name="account[]"]').selectOption('银行存款');
-  await page.locator('#voucherLines tbody tr').nth(1).locator('[name="credit[]"]').fill('90');
-  await page.locator('button[type=submit]').click();
+  await page.waitForTimeout(600);
+  const t10 = await page.evaluate(() => document.body.textContent);
+  check(t10.includes('找不到该页面') || t10.includes('上线检核仪表板'), '传票路由已移除（回首页）');
+  check(await page.evaluate(() => typeof ACCT === 'undefined'), 'ACCT 未定义（会计脚本未加载）');
+
+  // ========== 10b. 应收账款保留验证（收付款核心功能不受影响）==========
+  console.log('\n[10b] 应收/应付页仍可用');
+  await gotoHash('#/accounting/accounts-receivable');
   await page.waitForTimeout(500);
-  const vt = (await page.locator('.toast').allTextContents()).join(' ');
-  check(vt.includes('不平衡'), '不平衡传票被拦截: ' + vt.trim());
-  // 改为平衡
-  await page.locator('#voucherLines tbody tr').nth(1).locator('[name="credit[]"]').fill('100');
-  await page.locator('button[type=submit]').click();
-  await page.waitForTimeout(900);
-  const vc = await db(() => {
-    const v = DB.list('vouchers').sort((a, b) => b.no.localeCompare(a.no))[0];
-    return v ? { id: v.id, no: v.no, status: v.status, balanced: v.balanced } : null;
-  });
-  check(!!vc && /^JV\d{11}$/.test(vc.no), '传票已保存: ' + (vc && vc.no));
-  check(vc && vc.balanced === true, '传票标记为平衡');
-  // 过账
-  await page.locator('button:has-text("过账")').first().click();
+  check((await page.evaluate(() => document.body.textContent)).includes('应收账款'), '应收账款页渲染正常');
+  await gotoHash('#/accounting/accounts-payable');
   await page.waitForTimeout(500);
-  await page.locator('#confirmOkBtn').click();
-  await page.waitForTimeout(900);
-  const vc2 = await db(id => DB.get('vouchers', id).status, vc.id);
-  check(vc2 === '已过账', '传票过账成功');
+  check((await page.evaluate(() => document.body.textContent)).includes('应付账款'), '应付账款页渲染正常');
 
   // ========== 11. 客户主档 CRUD ==========
   console.log('\n[11] 客户主档新增');

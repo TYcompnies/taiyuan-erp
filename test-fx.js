@@ -1,6 +1,7 @@
 /**
- * test-fx.js — 外币全链路折本位币联动专项测试
- * USD 采购 + USD 销售：验证传票金额、损益收入、应收应付全部正确折算 CNY。
+ * test-fx.js — 外币全链路折本位币联动专项测试（第2版，会计模块已移除）
+ * USD 采购 + USD 销售：验证库存价值、经营收入、应收应付全部正确折算 CNY，
+ * 且业务操作全程不产生传票（会计层移除后 vouchers 保持为空）。
  */
 const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8902';
@@ -50,7 +51,7 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
         });
         const RATE = cfg.rate;
 
-        // USD 采购 10 个 × $10 = $100 → 进货 → 传票折 CNY = 100×RATE
+        // USD 采购 10 个 × $10 = $100 → 进货 → 库存价值折 CNY = 100×RATE
         const po = await db(page, () => {
             const sp = DB.list('suppliers')[0];
             const wh = DB.list('warehouses')[0];
@@ -66,15 +67,9 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
         await db(page, (a) => { Pages.receivePO(a.id); }, { id: po });
         await page.evaluate(() => document.querySelector('.modal-mask #confirmOkBtn') && document.querySelector('.modal-mask #confirmOkBtn').click());
         await page.waitForTimeout(300);
-        await test('T1 USD 进货传票金额折 CNY（100 USD → ' + (100 * RATE) + '）', async () => {
-            const r = await db(page, (a) => {
-                const v = DB.list('vouchers').find(x => x.biz_key === 'PO:' + a.id);
-                if (!v) return null;
-                return { d: v.lines.reduce((s, l) => s + Utils.num(l.debit), 0), c: v.lines.reduce((s, l) => s + Utils.num(l.credit), 0) };
-            }, { id: po });
-            if (!r) throw new Error('无 PO 传票');
-            if (Math.abs(r.d - 100 * RATE) > 0.01) throw new Error(`借方期望 ${100 * RATE} 实际 ${r.d}`);
-            if (Math.abs(r.c - 100 * RATE) > 0.01) throw new Error(`贷方期望 ${100 * RATE} 实际 ${r.c}`);
+        await test('T1 USD 进货后 vouchers 为空（会计模块已移除，无 PO 传票）', async () => {
+            const r = await db(page, () => DB.list('vouchers').length);
+            if (r !== 0) throw new Error(`vouchers 期望 0 实际 ${r}`);
         });
         await test('T2 库存价值折本位币（10个 × $10 成本 × ' + RATE + '）', async () => {
             const v = await db(page, () => DB.stockValue('it_fx1'));
@@ -97,26 +92,15 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
         await page.waitForTimeout(200);
         await db(page, (a) => { Pages.doShip(a.id); }, { id: so });
         await page.waitForTimeout(300);
-        await test('T3 USD 出货收入传票折 CNY（120 USD → ' + (120 * RATE) + '）', async () => {
-            const r = await db(page, () => {
-                const v = DB.list('vouchers').filter(x => (x.biz_key || '').indexOf('SHIP:') === 0 && x.status === '已过账')[0];
-                if (!v) return null;
-                const rev = (v.lines || []).filter(l => l.account === '主营业务收入').reduce((s, l) => s + Utils.num(l.credit), 0);
-                return rev;
-            });
-            if (r === null) throw new Error('无 SHIP 传票');
-            if (Math.abs(r - 120 * RATE) > 0.01) throw new Error(`收入贷方期望 ${120 * RATE} 实际 ${r}`);
+        await test('T3 USD 出货后 vouchers 为空（无 SHIP 传票）', async () => {
+            const r = await db(page, () => DB.list('vouchers').length);
+            if (r !== 0) throw new Error(`vouchers 期望 0 实际 ${r}`);
         });
-        await test('T4 COGS 折 CNY（6个 × $10 × ' + RATE + ' = ' + (60 * RATE) + '）', async () => {
-            const r = await db(page, () => {
-                const v = DB.list('vouchers').filter(x => (x.biz_key || '').indexOf('SHIP:') === 0 && x.status === '已过账')[0];
-                if (!v) return null;
-                const cogs = (v.lines || []).filter(l => l.account === '主营业务成本').reduce((s, l) => s + Utils.num(l.debit), 0);
-                return cogs;
-            });
-            if (Math.abs(r - 60 * RATE) > 0.01) throw new Error(`COGS 期望 ${60 * RATE} 实际 ${r}`);
+        await test('T4 出货后剩余库存价值折 CNY（4个 × $10 × ' + RATE + ' = ' + (40 * RATE) + '）', async () => {
+            const v = await db(page, () => DB.stockValue('it_fx1'));
+            if (Math.abs(v - 40 * RATE) > 0.01) throw new Error(`库存价值期望 ${40 * RATE} 实际 ${v}`);
         });
-        await test('T5 损益表口径：收入与 COGS 均折 CNY', async () => {
+        await test('T5 经营口径：收入与 COGS 均折 CNY', async () => {
             const r = await db(page, () => {
                 const m = '2026-08';
                 const shipIds = DB.list('shipments').filter(s => (s.ship_date || '').startsWith(m)).map(s => s.sales_order_id);
@@ -144,25 +128,24 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
             if (html.indexOf('120.00') < 0) throw new Error('应收页未显示 120.00 USD 金额');
         });
 
-        // USD 收款 $120 → RECV 传票折 CNY
+        // USD 收款 $120 → 收款后订单状态与已收金额
         await db(page, (a) => { Pages.receivePayment(a.id); }, { id: so });
         await page.waitForTimeout(200);
         await db(page, (a) => { Pages.doSavePayment(a.id); }, { id: so });
         await page.waitForTimeout(200);
-        await test('T7 USD 收款传票折 CNY（120 USD → ' + (120 * RATE) + '）', async () => {
-            const r = await db(page, (a) => {
-                const v = DB.list('vouchers').find(x => (x.biz_key || '').indexOf('RECV:' + a.id + ':') === 0 && x.status === '已过账');
-                if (!v) return null;
-                return v.lines.reduce((s, l) => s + Utils.num(l.debit), 0);
-            }, { id: so });
-            if (Math.abs(r - 120 * RATE) > 0.01) throw new Error(`收款借方期望 ${120 * RATE} 实际 ${r}`);
+        await test('T7 USD 收款后 vouchers 为空（无 RECV 传票）且订单已收款', async () => {
+            const r = await db(page, (a) => ({
+                v: DB.list('vouchers').length,
+                ps: DB.get('sales_orders', a.id).payment_status,
+                rcv: Utils.num(DB.get('sales_orders', a.id).received_amount)
+            }), { id: so });
+            if (r.v !== 0) throw new Error(`vouchers 期望 0 实际 ${r.v}`);
+            if (r.ps !== 'paid') throw new Error(`payment_status 期望 paid 实际 ${r.ps}`);
+            if (Math.abs(r.rcv - 120) > 0.01) throw new Error(`已收期望 120 实际 ${r.rcv}`);
         });
-        await test('T8 外币全链路后试算表仍平衡', async () => {
-            const diff = await db(page, () => {
-                const m = ACCT.allAccountBalances(null);
-                return Object.values(m).reduce((s, x) => s + x.debit, 0) - Object.values(m).reduce((s, x) => s + x.credit, 0);
-            });
-            if (Math.abs(diff) > 0.01) throw new Error(`试算表差 ${diff}`);
+        await test('T8 外币全链路后会计集合仍为空（无隐藏写入）', async () => {
+            const r = await db(page, () => ({ v: DB.list('vouchers').length, e: DB.list('expenses').length, a: DB.list('chart_accounts').length }));
+            if (r.v || r.e || r.a) throw new Error(`会计集合非空 v=${r.v} e=${r.e} a=${r.a}`);
         });
 
         // 清理

@@ -1,5 +1,6 @@
 // ERP 复刻系统浏览器冒烟测试（v2 - 修复侧边栏分组折叠问题）
 const { chromium } = require('playwright');
+const BASE = process.env.BASE || 'http://127.0.0.1:8902';
 
 (async () => {
   const errors = [];
@@ -32,7 +33,7 @@ const { chromium } = require('playwright');
   }
 
   // 1. 打开登录页
-  await page.goto('http://127.0.0.1:8902/', { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/', { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);
   check(await page.locator('text=登录').count() > 0 || await page.locator('input[type=password]').count() > 0, '登录页渲染（有登录表单）');
   check((await page.content()).includes('义乌市钛沅商贸有限公司') || (await page.content()).includes('钛沅商贸'), '登录页显示公司名');

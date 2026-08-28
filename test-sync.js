@@ -4,7 +4,7 @@
 // 运行前提：本地服务器 http://127.0.0.1:8902
 const { chromium } = require('playwright');
 
-const BASE = 'http://127.0.0.1:8902';
+const BASE = process.env.BASE || 'http://127.0.0.1:8902';
 let pass = 0, fail = 0, failures = [];
 const errors = [];
 
@@ -205,22 +205,11 @@ const near = (a, b, eps) => Math.abs(parseFloat(a || 0) - b) < (eps === undefine
   check(near(await adjRow.locator('.after-qty').textContent(), 98, 0.001), '异动后库存实时 = 98');
 
   // ========== 9. 传票：借贷输入后合计实时更新（回归） ==========
-  console.log('\n[9] 传票表单：借贷输入后合计与差额实时更新（回归验证）');
+  console.log('\n[9] 传票表单：模块已移除，路由回首页（回归验证）');
   await gotoHash('#/accounting/vouchers/create');
-  const debitInput = page.locator('input[name="debit[]"]').first();
-  const creditInput = page.locator('input[name="credit[]"]').nth(1);
-  if (await debitInput.count()) {
-    await debitInput.fill('100');
-    await page.waitForTimeout(300);
-    check(near(await page.locator('#vDebitTotal').textContent(), 100), '传票借方合计实时 = 100');
-    check(near(await page.locator('#vDiff').textContent(), 100), '传票差额实时 = 100（不平衡）');
-    await creditInput.fill('100');
-    await page.waitForTimeout(300);
-    check(near(await page.locator('#vCreditTotal').textContent(), 100), '传票贷方合计实时 = 100');
-    check(near(await page.locator('#vDiff').textContent(), 0), '借贷平衡后差额实时 = 0');
-  } else {
-    check(false, '未找到传票借贷输入行');
-  }
+  const vGoneText = ((await page.locator('.toast').allTextContents().catch(() => [])).join(' ')) + (await bodyText());
+  check(vGoneText.includes('找不到该页面') || vGoneText.includes('上线检核仪表板'), '传票表单路由已移除');
+  check((await db(() => DB.list('vouchers').length === 0)), 'vouchers 集合为空');
 
   // ========== 10. 付款条件联动：主档新增→下拉可见、选择自动带出、修改同步引用 ==========
   console.log('\n[10] 付款条件联动：主档新增→下拉可见、选择自动带出、修改同步引用');

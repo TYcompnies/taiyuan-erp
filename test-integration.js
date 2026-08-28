@@ -1,7 +1,8 @@
 /**
- * test-integration.js — 跨模块端到端业务闭环联动测试（第2版）
- * 验证「采购→付款→销售→出货→收款→退货→删除回冲→报表→会计」全链路联动更新一致性。
+ * test-integration.js — 跨模块端到端业务闭环联动测试（第3版，会计模块已移除）
+ * 验证「采购→付款→销售→出货→收款→退货→删除回冲→报表」全链路联动更新一致性。
  * 全程走真实 UI 弹窗流程（receivePO/shipOrder/receivePayment/payPO/deleteShipment）。
+ * 传票自动生成断言改为「vouchers 全程为空」验证（会计层移除后业务侧无传票写入）。
  */
 const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8902';
@@ -85,9 +86,9 @@ async function closeModals(page) {
             const st = await db(page, () => DB.totalStock('it_int1'));
             if (st !== 50) throw new Error(`库存期望 50 实际 ${st}`);
         });
-        await test('A3 进货自动生成传票（PO:biz_key，已过账）', async () => {
-            const v = await db(page, (a) => DB.list('vouchers').filter(x => x.biz_key === 'PO:' + a.id && x.status === '已过账').length, { id: po.id });
-            if (v !== 1) throw new Error(`PO 传票数期望 1 实际 ${v}`);
+        await test('A3 进货后 vouchers 仍为空（会计模块已移除，无 PO 传票）', async () => {
+            const v = await db(page, () => DB.list('vouchers').length);
+            if (v !== 0) throw new Error(`vouchers 期望 0 实际 ${v}`);
         });
 
         await db(page, (a) => Pages.payPO(a.id), { id: po.id });
@@ -99,9 +100,9 @@ async function closeModals(page) {
             if (r.ps !== 'paid') throw new Error(`payment_status 期望 paid 实际 ${r.ps}`);
             if (r.stock !== 50) throw new Error(`库存期望 50 实际 ${r.stock}`);
         });
-        await test('A5 付款自动生成传票（PAY:biz_key）', async () => {
-            const v = await db(page, (a) => DB.list('vouchers').filter(x => (x.biz_key || '').indexOf('PAY:' + a.id + ':') === 0 && x.status === '已过账').length, { id: po.id });
-            if (v !== 1) throw new Error(`PAY 传票数期望 1 实际 ${v}`);
+        await test('A5 付款后 vouchers 仍为空（无 PAY 传票）', async () => {
+            const v = await db(page, () => DB.list('vouchers').length);
+            if (v !== 0) throw new Error(`vouchers 期望 0 实际 ${v}`);
         });
 
         // ===== B. 销售闭环 =====
@@ -125,11 +126,11 @@ async function closeModals(page) {
             if (r.stock !== 30) throw new Error(`库存期望 30 实际 ${r.stock}`);
             if (r.st !== 'shipped') throw new Error(`状态期望 shipped 实际 ${r.st}`);
         });
-        await test('B2 出货自动生成收入+成本传票（SHIP:biz_key）', async () => {
-            const v = await db(page, () => DB.list('vouchers').filter(x => (x.biz_key || '').indexOf('SHIP:') === 0 && x.status === '已过账').length);
-            if (v < 1) throw new Error(`SHIP 传票数 ${v}`);
+        await test('B2 出货后 vouchers 仍为空（无 SHIP 传票）', async () => {
+            const v = await db(page, () => DB.list('vouchers').length);
+            if (v !== 0) throw new Error(`vouchers 期望 0 实际 ${v}`);
         });
-        await test('B3 损益口径：本月出货收入 300 / COGS 160（20个×成本8）', async () => {
+        await test('B3 经营口径：本月出货收入 300 / COGS 160（20个×成本8）', async () => {
             const r = await db(page, () => {
                 const m = '2026-08';
                 const shipIds = DB.list('shipments').filter(s => (s.ship_date || '').startsWith(m)).map(s => s.sales_order_id);
@@ -156,9 +157,9 @@ async function closeModals(page) {
             const ps = await db(page, (a) => DB.get('sales_orders', a.id).payment_status, { id: so.id });
             if (ps !== 'paid') throw new Error(`payment_status 期望 paid 实际 ${ps}`);
         });
-        await test('B5 收款自动生成传票（RECV:biz_key）', async () => {
-            const v = await db(page, (a) => DB.list('vouchers').filter(x => (x.biz_key || '').indexOf('RECV:' + a.id + ':') === 0 && x.status === '已过账').length, { id: so.id });
-            if (v !== 1) throw new Error(`RECV 传票数期望 1 实际 ${v}`);
+        await test('B5 收款后 vouchers 仍为空（无 RECV 传票）', async () => {
+            const v = await db(page, () => DB.list('vouchers').length);
+            if (v !== 0) throw new Error(`vouchers 期望 0 实际 ${v}`);
         });
 
         // ===== C. 销退闭环 =====
@@ -177,27 +178,27 @@ async function closeModals(page) {
                 total_amount: 75, cost_reversal: 40,
                 lines: so.lines.map(l => ({ ...l, qty: 5, amount: 75 }))
             });
-            ACCT.onSalesReturn(sr, so);
             DB.flush();
         }, { id: so.id });
         await test('C1 销退后库存回补 = 35（30+5）', async () => {
             const st = await db(page, () => DB.totalStock('it_int1'));
             if (st !== 35) throw new Error(`库存期望 35 实际 ${st}`);
         });
-        await test('C2 销退传票（SRET:biz_key）已生成且过账', async () => {
-            const v = await db(page, () => DB.list('vouchers').filter(x => (x.biz_key || '').indexOf('SRET:') === 0 && x.status === '已过账').length);
-            if (v < 1) throw new Error(`SRET 传票数 ${v}`);
+        await test('C2 销退后 vouchers 仍为空（无 SRET 传票）', async () => {
+            const v = await db(page, () => DB.list('vouchers').length);
+            if (v !== 0) throw new Error(`vouchers 期望 0 实际 ${v}`);
         });
 
-        // ===== D. 会计平衡 =====
-        await test('D1 试算表借贷平衡（全部已过账传票）', async () => {
-            const r = await db(page, () => {
-                const m = ACCT.allAccountBalances(null);
-                const d = Object.values(m).reduce((s, x) => s + x.debit, 0);
-                const c = Object.values(m).reduce((s, x) => s + x.credit, 0);
-                return d - c;
-            });
-            if (Math.abs(r) > 0.01) throw new Error(`试算表不平衡，差 ${r}`);
+        // ===== D. 会计模块移除验证 =====
+        await test('D1 ACCT 未定义且会计集合为空（模块已移除）', async () => {
+            const r = await db(page, () => ({
+                acct: typeof ACCT !== 'undefined',
+                vouchers: DB.list('vouchers').length,
+                expenses: DB.list('expenses').length,
+                accounts: DB.list('chart_accounts').length
+            }));
+            if (r.acct) throw new Error('ACCT 仍存在');
+            if (r.vouchers || r.expenses || r.accounts) throw new Error(`会计集合非空 v=${r.vouchers} e=${r.expenses} a=${r.accounts}`);
         });
 
         // ===== E. 删除守卫 + 删除回冲 =====
@@ -211,10 +212,9 @@ async function closeModals(page) {
             if (r.st !== 'shipped') throw new Error('订单状态被误改');
             await closeModals(page);
         });
-        // 删除销退记录（连带作废 SRET 传票）后再删出货单
+        // 删除销退记录后再删出货单（会计已移除，无需作废传票）
         await db(page, () => {
             const sr = DB.list('sales_returns')[0];
-            ACCT.voidVouchers('SRET:' + sr.id);
             DB.remove('sales_returns', sr.id);
             DB.flush();
         });
@@ -226,16 +226,13 @@ async function closeModals(page) {
             if (r.stock !== 55) throw new Error(`库存期望 55 实际 ${r.stock}`);
             if (r.st !== 'draft') throw new Error(`状态期望 draft 实际 ${r.st}`);
         });
-        await test('E3 删出货单后 SHIP 传票已作废', async () => {
-            const v = await db(page, () => DB.list('vouchers').filter(x => (x.biz_key || '').indexOf('SHIP:') === 0 && x.status === '已过账').length);
-            if (v !== 0) throw new Error(`已过账 SHIP 传票 ${v} 张`);
+        await test('E3 删出货单后 vouchers 仍为空（无传票残留）', async () => {
+            const v = await db(page, () => DB.list('vouchers').length);
+            if (v !== 0) throw new Error(`vouchers 期望 0 实际 ${v}`);
         });
-        await test('E4 删除联动后试算表仍平衡', async () => {
-            const r = await db(page, () => {
-                const m = ACCT.allAccountBalances(null);
-                return Object.values(m).reduce((s, x) => s + x.debit, 0) - Object.values(m).reduce((s, x) => s + x.credit, 0);
-            });
-            if (Math.abs(r) > 0.01) throw new Error(`试算表差 ${r}`);
+        await test('E4 删除联动后会计集合仍为空（无隐藏写入）', async () => {
+            const r = await db(page, () => ({ v: DB.list('vouchers').length, e: DB.list('expenses').length, a: DB.list('chart_accounts').length }));
+            if (r.v || r.e || r.a) throw new Error(`会计集合非空 v=${r.v} e=${r.e} a=${r.a}`);
         });
 
         // ===== F. 出勤数据隔离 =====
