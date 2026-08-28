@@ -23,8 +23,24 @@ function UtilsNum(v) { const n = parseFloat(String(v).replace(/,/g, '')); return
   page.on('pageerror', err => errors.push('[pageerror] ' + err.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('[console] ' + m.text()); });
 
+  // 线上跑时彻底断开云同步（防测试种子数据推送生产云/生产数据覆盖种子）：
+  // 清自动保存的同步配置 + 停轮询 + 置 _started 防重入 + 置空 DEFAULT_SYNC_CFG 防推送。
+  // 本地 8904 是 localhost 自动豁免，不受影响。
+  async function killSync() {
+    await page.evaluate(() => {
+      try {
+        localStorage.removeItem('taiyuan_sync_cfg_v1');
+        if (typeof CloudSync !== 'undefined') {
+          CloudSync.DEFAULT_SYNC_CFG = null;
+          CloudSync._started = true;
+          if (CloudSync._pullTimer) clearInterval(CloudSync._pullTimer);
+        }
+      } catch (e) { }
+    });
+  }
   async function login(user, pwd) {
     await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+    await killSync();
     await page.waitForTimeout(500);
     const inputs = page.locator('#loginForm input');
     const n = await inputs.count();
@@ -237,6 +253,7 @@ function UtilsNum(v) { const n = parseFloat(String(v).replace(/,/g, '')); return
   });
   check(removed, '已从所有角色移除 report.profit（模拟旧数据）');
   await page.reload({ waitUntil: 'networkidle' });
+  await killSync();
   await page.waitForTimeout(800);
   const restored = await db(() => DB.list('roles').every(r => (r.permissions || []).includes('report.profit')));
   check(restored, 'reload 后 migrateProfitReport 幂等补回所有角色权限');
