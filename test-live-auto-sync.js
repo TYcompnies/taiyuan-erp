@@ -45,9 +45,10 @@ async function db(page, fn, arg) {
 
     console.log('== 线上自动云同步验证 ==');
 
-    // L1: PULL_INTERVAL 为 15000
-    const interval = await db(page, () => CloudSync.PULL_INTERVAL);
-    ok('L1 PULL_INTERVAL 为 15000（15 秒轮询）', interval === 15000);
+    // L1: 轮询间隔 12s（8/27 弱网强化调整）+ fetch 超时 15s
+    const interval = await db(page, () => ({ pull: CloudSync.PULL_INTERVAL, fetch: CloudSync.FETCH_TIMEOUT }));
+    ok('L1 PULL_INTERVAL 为 12000（12 秒轮询）', interval.pull === 12000);
+    ok('L1b FETCH_TIMEOUT 为 15000（弱网 15s 超时切备用通道）', interval.fetch === 15000);
 
     // L2: schedulePull 方法存在
     const hasSchedulePull = await db(page, () => typeof CloudSync.schedulePull === 'function');

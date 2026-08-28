@@ -17,6 +17,19 @@ async function login(page) {
     await page.goto(BASE);
     await page.evaluate(() => { localStorage.clear(); });
     await page.goto(BASE);
+    // 线上跑时彻底断开云同步（防种子数据推送到生产云/生产数据覆盖种子）：
+    // 清自动保存的同步配置 + 停轮询 + 置 _started 防重入 + 置空 DEFAULT_SYNC_CFG 防推送。
+    // 本地 8904 是 localhost 自动豁免，不受影响。
+    await page.evaluate(() => {
+        try {
+            localStorage.removeItem("taiyuan_sync_cfg_v1");
+            if (typeof CloudSync !== "undefined") {
+                CloudSync.DEFAULT_SYNC_CFG = null;
+                CloudSync._started = true;
+                if (CloudSync._pullTimer) clearInterval(CloudSync._pullTimer);
+            }
+        } catch (e) { }
+    });
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
     await page.click('button[type="submit"]');

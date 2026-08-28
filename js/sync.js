@@ -578,6 +578,10 @@ const CloudSync = {
         this._applying = true;
         try {
             localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(DB._mem));
+            // 会计模块移除迁移（幂等）：云端旧快照可能仍带 chart_accounts/vouchers/expenses，
+            // 套用后立即清空并 flush 调度推送，让清空随同步扩散到所有设备；
+            // 若推送失败，下轮 pull 的内容指纹对账会按「孤儿改动」后推赢补推。
+            try { if (typeof DB !== "undefined" && DB.purgeAccounting) DB.purgeAccounting(); } catch (e) { /* 迁移失败不影响套用 */ }
             render();
         } finally {
             this._applying = false;

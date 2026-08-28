@@ -122,6 +122,11 @@ const waitFor = async (fn, timeout = 15000) => {
 
     // 4. 網絡恢復 → 自動輪詢 pull → 指紋對帳發現孤兒 → 後推贏自動上傳
     textdbDown = false;
+    // 主動觸發一次 pull（manual=false，與 12s 自動輪詢完全同一路徑）：
+    // 消除「輪詢相位 vs waitFor 20s 窗口」競態——輪詢間隔 12s，網絡恢復時可能剛錯過一輪，
+    // 治癒要等下一輪 12s + push 時間，偶發超窗。邏輯本身不變（對帳→孤兒→先推）。
+    await pageB.evaluate(() => { CloudSync._busy = false; CloudSync.pull(false).catch(() => { }); });
+    await pageB.waitForTimeout(1500);
     const healed = await waitFor(() => pageB.evaluate(id => CloudSync.peek().then(s => {
         const arr = (s && s.payload && s.payload.customers) || [];
         return !arr.find(r => r.id === id);
