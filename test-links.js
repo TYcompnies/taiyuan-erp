@@ -355,15 +355,16 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   const tmpGone = await db(() => !DB.list('warehouses').some(w => w.id === 'wh_tmp'));
   check(tmpGone, '无库存空仓库可正常删除');
 
-  // ========== 12. 仪表板本月毛利口径（损益表已移除，毛利 = 净营收 - 销货成本净额） ==========
-  console.log('\n[12] 仪表板本月毛利 = (营收1020 - 退货60) - (成本272 - 成本冲回40) = 728');
-  const expectProfit = (1020 - 60) - (272 - 40);
+  // ========== 12. 仪表板已无本月经营摘要（损益口径移至「损益报表」页，数值由 test-profit-report 覆盖） ==========
+  console.log('\n[12] 仪表板无本月经营摘要/本月毛利，损益报表页可访问');
   await gotoHash('#/dashboard');
   const dashText = await bodyText();
-  const dashProfitMatch = dashText.match(/本月毛利\s*([\d,.-]+)/);
-  const dashProfit = dashProfitMatch ? parseFloat(dashProfitMatch[1].replace(/,/g, '')) : NaN;
-  check(near(dashProfit, expectProfit), `仪表板本月毛利 = ${expectProfit} (实际 ${dashProfit})`);
+  check(!dashText.includes('本月毛利'), '仪表板不再出现本月毛利 KPI');
+  check(!dashText.includes('本月经营摘要'), '仪表板不再出现本月经营摘要面板');
   check(!dashText.includes('损益表'), '仪表板不再出现损益表入口/文案');
+  await gotoHash('#/report/profit');
+  const profitText = await bodyText();
+  check(profitText.includes('损益报表') && profitText.includes('净营收'), '损益报表页正常渲染（毛利口径数值由 test-profit-report 覆盖）');
 
   // ========== 汇总 ==========
   console.log('\n================ 汇总 ================');

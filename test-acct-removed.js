@@ -160,7 +160,8 @@ async function login(page) {
             if (t.indexOf('待切传票') >= 0) throw new Error('仍有待切传票 KPI');
             if (t.indexOf('损益表') >= 0) throw new Error('仍有损益表链接/文案');
             if (t.indexOf('费用支出') >= 0) throw new Error('仍有费用支出入口');
-            if (t.indexOf('本月毛利') < 0) throw new Error('缺少本月毛利 KPI');
+            if (t.indexOf('本月毛利') >= 0) throw new Error('仍有本月毛利 KPI（已移至损益报表页）');
+            if (t.indexOf('本月经营摘要') >= 0) throw new Error('仍有本月经营摘要面板（已移至损益报表页）');
         });
         await test('R13 日常流程页无费用/传票/损益卡片', async () => {
             await page.evaluate(() => { location.hash = '#/daily-workflow'; });

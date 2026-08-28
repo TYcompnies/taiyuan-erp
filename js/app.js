@@ -370,7 +370,6 @@ function renderDashboard() {
     const pos = DB.list("purchase_orders");
     const items = DB.list("items");
     const today = Utils.today();
-    const month = Utils.monthStart();
 
     const pendingShip = orders.filter(o => o.status === "draft");
     const pendingReceive = pos.filter(o => o.status === "draft");
@@ -382,25 +381,6 @@ function renderDashboard() {
         return !it || !it.cost || it.cost <= 0;
     })).length;
     const curMissingCount = DB.list("currencies").filter(c => !c.is_base && (!c.rate || c.rate <= 0)).length;
-
-    // 本月毛利（本位币口径：外币乘汇率、成本乘销售→库存换算率、冲回退货成本）
-    // 联动：收入按「出货日期」归属（跨月订单以实际出货月份计入）
-    const shipIds = new Set(DB.list("shipments").filter(s => s.ship_date >= month).map(s => s.sales_order_id));
-    const shipped = orders.filter(o => o.status === "shipped" && shipIds.has(o.id));
-    const revenue = shipped.reduce((s, o) => s + toCNY(o.invoice_amount, o.currency), 0);
-    const cogs = shipped.reduce((s, o) => s + o.lines.reduce((a, l) => {
-        const it = DB.get("items", l.item_id);
-        const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
-        return a + Utils.num(l.qty) * rate * itemCostCNY(it);
-    }, 0), 0);
-    const monthReturns = DB.list("sales_returns").filter(r => r.return_date >= month);
-    const returnTotal = monthReturns.reduce((s, r) => {
-        const so = DB.get("sales_orders", r.sales_order_id);
-        return s + toCNY(r.total_amount, so ? so.currency : "");
-    }, 0);
-    const returnCost = monthReturns.reduce((s, r) => s + Utils.num(r.cost_reversal), 0);
-    // 本月毛利（会计模块已移除，费用支出不再记录：毛利 = 净营收 - 销货成本净额）
-    const profit = Utils.round((revenue - returnTotal) - (cogs - returnCost));
 
     // 应收应付（扣除已收/已付与退货/退回冲销；外币折本位币，与应收账款/应付账款页 KPI 口径一致）
     const arReturnMap = {};
@@ -420,7 +400,6 @@ function renderDashboard() {
     const apUnpaid = receivedPos
         .reduce((s, o) => s + toCNY(Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (apReturnMap[o.id] || 0), 0), o.currency), 0);
     const apBalance = receivedPos.reduce((s, o) => s + toCNY(Utils.num(o.amount), o.currency), 0);
-    const stockValue = items.reduce((s, i) => s + DB.stockValue(i.id), 0);
     const lastBackup = DB.list("backups").sort((a, b) => b.date.localeCompare(a.date))[0];
     const daysSinceBackup = lastBackup ? Math.max(0, Math.round((new Date(today) - new Date(lastBackup.date.slice(0, 10))) / 86400000)) : "-";
 
@@ -511,19 +490,9 @@ function renderDashboard() {
         <div class="kpi-card"><span>待进货采购</span><strong>${pendingReceive.length}</strong><p>确认后仍未进货</p></div>
         <div class="kpi-card"><span>待出货订单</span><strong>${pendingShip.length}</strong><p>订单尚未扣库存</p></div>
         <div class="kpi-card"><span>低库存商品</span><strong>${lowStock.length}</strong><p>低于安全库存</p></div>
-        <div class="kpi-card"><span>本月毛利</span><strong>${fmt(profit)}</strong><p>净营收 - 销货成本净额</p></div>
     </section>
 
     <section class="launch-section-grid">
-        <div class="panel">
-            <div class="panel-title"><h2>本月经营摘要</h2><span style="font-size:12px;color:var(--muted)">本位币口径</span><a href="#/report/profit">查看损益报表</a></div>
-            <div class="mini-metrics">
-                <div><span>营收</span><strong>${fmt(revenue)}</strong></div>
-                <div><span>销货成本</span><strong>${fmt(cogs)}</strong></div>
-                <div><span>毛利</span><strong>${fmt(profit)}</strong></div>
-                <div><span>库存价值</span><strong>${fmt(stockValue)}</strong></div>
-            </div>
-        </div>
         <div class="panel">
             <div class="panel-title"><h2>账款状态（本位币）</h2><a href="#/accounting/accounts-receivable">查看应收应付</a></div>
             <div class="mini-metrics">

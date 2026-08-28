@@ -135,14 +135,13 @@ function check(cond, msg) {
     });
     return true;
   });
-  // 损益表已移除 → 改在仪表板「本月经营摘要」验证同一营收口径
+  // 损益口径已移至「损益报表」页（报表查询 → 损益报表）验证；仪表板「本月经营摘要」已移除
   await gotoHash('#/dashboard');
-  const isHtml = await page.evaluate(() => document.body.innerHTML);
-  const m2 = isHtml.match(/营收<\/span><strong>([\d,.-]+)<\/strong>/);
-  console.log('  仪表板经营摘要(本月) 营收:', m2 ? m2[1] : '?');
-  // 本月(2026-08)应有这笔收入（8月15日出货），按出货日期归属 → 营收应为 1200
-  const revenueDisplay = m2 ? m2[1].replace(/,/g, '') : '0';
-  check(parseFloat(revenueDisplay) === 1200, `仪表板本月营收 ${revenueDisplay}（期望 1200，按出货日期归属）`);
+  const dashTxt = await page.evaluate(() => document.body.textContent);
+  check(!dashTxt.includes('本月经营摘要') && !dashTxt.includes('本月毛利'), '仪表板已无经营摘要/本月毛利（口径移至损益报表页）');
+  await gotoHash('#/report/profit');
+  const profitTxt = await page.evaluate(() => document.body.textContent);
+  check(profitTxt.includes('损益报表') && profitTxt.includes('近 30 天'), '损益报表页正常渲染（按出货日期归属的数值口径由 test-profit-report 覆盖）');
 
   // ===== 6. 应收账款 =====
   console.log('\n[5] 应收账款');

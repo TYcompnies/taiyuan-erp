@@ -236,11 +236,13 @@ function UtilsNum(v) { const n = parseFloat(String(v).replace(/,/g, '')); return
   check(near(mRow.prev[0], 1080) && near(mRow.prev[1], 1440) && near(mRow.prev[2], -360), `上月行 1080/1440/-360（实际 ${mRow.prev.join(',')}）`);
   check(near(mRow.total[2], -200), `月视图合计毛利 -200（实际 ${mRow.total[2]}）`);
 
-  // ========== 9. 仪表板入口链接 ==========
-  console.log('\n[9] 仪表板入口');
+  // ========== 9. 仪表板已移除本月经营摘要（入口改由报表查询菜单） ==========
+  console.log('\n[9] 仪表板移除本月经营摘要');
   await gotoHash('#/dashboard');
-  const dash = await page.evaluate(() => document.querySelector('#app').innerHTML);
-  check(dash.includes('href="#/report/profit"'), '仪表板「本月经营摘要」含查看损益报表入口');
+  const dashMain = await page.evaluate(() => document.querySelector('#app .main').innerHTML);
+  check(!dashMain.includes('本月经营摘要'), '仪表板不再显示「本月经营摘要」面板');
+  check(!dashMain.includes('本月毛利'), '仪表板不再显示「本月毛利」KPI');
+  check(!dashMain.includes('查看损益报表') && !dashMain.includes('href="#/report/profit"'), '仪表板主体不再保留「查看损益报表」链接（入口在报表查询菜单）');
 
   // ========== 10. 权限迁移（旧数据平滑升级） ==========
   console.log('\n[10] 权限迁移');
