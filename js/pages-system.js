@@ -677,3 +677,242 @@ Pages.permissions = function () {
     </div>`;
     renderShell("permissions", content, "首页 / 系统设置 / 权限管理");
 };
+
+/* ============================================================
+   损益报表（每日 / 每月）
+   口径与仪表板「本月经营摘要」一致（本位币）：
+   - 收入按「出货日期」归属（订单已出货 shipment 1:1，整单金额计入出货日所在期间）
+   - 销货成本 = Σ 明细 qty × 销售→库存换算率 × 商品成本(采购币别折本位币)
+   - 销退按「退回日期」冲减营收（订单币别折本位币）与成本（cost_reversal 已为本位币）
+   - 毛利 = (营收 - 销退营收) - (销货成本 - 销退成本)
+   ============================================================ */
+Pages.profitReport = function () {
+    const mode = window.__profitMode || "day";       // day | month
+    const range = window.__profitRange || (mode === "day" ? "30" : "12");
+
+    const buckets = profitSeries(mode, range);
+
+    // ---- 汇总 ----
+    const totRev = Utils.round(buckets.reduce((s, b) => s + b.netRevenue, 0));
+    const totCogs = Utils.round(buckets.reduce((s, b) => s + (b.cogs - b.retCost), 0));
+    const totProfit = Utils.round(buckets.reduce((s, b) => s + b.profit, 0));
+    const totMargin = totRev !== 0 ? totProfit / totRev * 100 : 0;
+
+    const rangeOpts = mode === "day"
+        ? [["7", "近 7 天"], ["14", "近 14 天"], ["30", "近 30 天"], ["90", "近 90 天"]]
+        : [["3", "近 3 个月"], ["6", "近 6 个月"], ["12", "近 12 个月"], ["24", "近 24 个月"]];
+    const rangeHtml = rangeOpts.map(o => `<option value="${o[0]}" ${range === o[0] ? "selected" : ""}>${o[1]}</option>`).join("");
+
+    const content = `
+    <div class="page-head">
+        <div><h1>损益报表</h1><p>营收 / 销货成本 / 毛利走势（本位币 ${COMPANY.baseCurrency}，收入按出货日期归属、销退冲减）。</p></div>
+        <div class="head-actions"><a class="btn ghost" href="#/dashboard">仪表板</a></div>
+    </div>
+    <div class="toolbar">
+        <div class="filters">
+            <div class="seg">
+                <button class="btn ${mode === "day" ? "primary" : "ghost"}" onclick="Pages.setProfitMode('day')">每日</button>
+                <button class="btn ${mode === "month" ? "primary" : "ghost"}" onclick="Pages.setProfitMode('month')">每月</button>
+            </div>
+            <select onchange="Pages.setProfitRange(this.value)">${rangeHtml}</select>
+        </div>
+    </div>
+    <div class="kpi-grid">
+        <div class="kpi-card"><span>区间净营收</span><strong>${fmt(totRev)}</strong><p>营收 - 销退冲减</p></div>
+        <div class="kpi-card"><span>销货成本</span><strong>${fmt(totCogs)}</strong><p>出货成本 - 销退成本冲回</p></div>
+        <div class="kpi-card"><span>区间毛利</span><strong style="color:${totProfit >= 0 ? "var(--green)" : "var(--danger)"}">${fmt(totProfit)}</strong><p>净营收 - 销货成本净额</p></div>
+        <div class="kpi-card"><span>毛利率</span><strong>${totMargin.toFixed(1)}%</strong><p>毛利 ÷ 净营收</p></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+        <div class="panel-title"><h2>${mode === "day" ? "每日" : "每月"}损益走势</h2>
+            <span style="font-size:12px;color:var(--muted)">hover 柱体查看数值</span></div>
+        <div class="panel-body">${profitChartSVG(buckets)}</div>
+    </div>
+    <div class="table-wrap master-table-wrap">
+        <table class="table">
+            <thead><tr><th>${mode === "day" ? "日期" : "月份"}</th><th class="num">净营收</th><th class="num">销货成本</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead>
+            <tbody>${buckets.map(b => `<tr>
+                <td><b>${h(b.label)}</b></td>
+                <td class="num line-amount" data-v="${b.netRevenue}">${fmt(b.netRevenue)}</td>
+                <td class="num line-amount" data-v="${b.cogs - b.retCost}">${fmt(b.cogs - b.retCost)}</td>
+                <td class="num line-amount" data-v="${b.profit}" style="color:${b.profit >= 0 ? "var(--green)" : "var(--danger)"}">${fmt(b.profit)}</td>
+                <td class="num">${b.netRevenue !== 0 ? (b.profit / b.netRevenue * 100).toFixed(1) + "%" : "-"}</td>
+            </tr>`).join("")}
+            <tr class="section-row">
+                <td><b>合计</b></td>
+                <td class="num line-amount" data-v="${totRev}"><b>${fmt(totRev)}</b></td>
+                <td class="num line-amount" data-v="${totCogs}"><b>${fmt(totCogs)}</b></td>
+                <td class="num line-amount" data-v="${totProfit}" style="color:${totProfit >= 0 ? "var(--green)" : "var(--danger)"}"><b>${fmt(totProfit)}</b></td>
+                <td class="num"><b>${totMargin.toFixed(1)}%</b></td>
+            </tr></tbody>
+        </table>
+    </div>`;
+    renderShell("profit_report", content, "首页 / 报表查询 / 损益报表");
+};
+
+Pages.setProfitMode = function (mode) {
+    window.__profitMode = mode;
+    // 当前范围对目标视图不合法时重置为默认（day→30 / month→12），避免 select 值与选项错位
+    const legal = mode === "day" ? ["7", "14", "30", "90"] : ["3", "6", "12", "24"];
+    if (!legal.includes(window.__profitRange)) window.__profitRange = mode === "day" ? "30" : "12";
+    Pages.profitReport();
+};
+Pages.setProfitRange = function (range) { window.__profitRange = range; Pages.profitReport(); };
+
+/* 生成损益期间桶序列（每桶含营收/成本/销退冲减/毛利） */
+function profitSeries(mode, range) {
+    const n = parseInt(range, 10) || (mode === "day" ? 30 : 12);
+    const now = new Date();
+    const buckets = [];
+    if (mode === "day") {
+        for (let i = n - 1; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+            buckets.push({ key, label: key.slice(5), start: key, end: key });
+        }
+    } else {
+        for (let i = n - 1; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const y = d.getFullYear(), m = d.getMonth() + 1;
+            const start = y + "-" + String(m).padStart(2, "0") + "-01";
+            const end = y + "-" + String(m).padStart(2, "0") + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0");
+            buckets.push({ key: y + "-" + String(m).padStart(2, "0"), label: y + "-" + String(m).padStart(2, "0"), start, end });
+        }
+    }
+
+    // 出货归属：shipment.ship_date → 已出货订单（一个订单只出货一次，1:1）
+    const orders = DB.list("sales_orders");
+    const ordersById = {};
+    orders.forEach(o => { ordersById[o.id] = o; });
+    const shipMap = {};
+    DB.list("shipments").forEach(s => {
+        const o = ordersById[s.sales_order_id];
+        if (o && o.status === "shipped") {
+            (shipMap[s.ship_date] = shipMap[s.ship_date] || []).push(s.sales_order_id);
+        }
+    });
+    // 销退按退回日期归属
+    const retMap = {};
+    DB.list("sales_returns").forEach(r => {
+        (retMap[r.return_date] = retMap[r.return_date] || []).push(r);
+    });
+
+    buckets.forEach(b => {
+        let revenue = 0, cogs = 0, retTotal = 0, retCost = 0;
+        Object.keys(shipMap).forEach(d => {
+            if (d < b.start || d > b.end) return;
+            shipMap[d].forEach(oid => {
+                const o = ordersById[oid];
+                revenue += toCNY(o.invoice_amount, o.currency);
+                o.lines.forEach(l => {
+                    const it = DB.get("items", l.item_id);
+                    const rate = it && Utils.num(it.sales_to_stock) > 0 ? Utils.num(it.sales_to_stock) : 1;
+                    cogs += Utils.num(l.qty) * rate * itemCostCNY(it);
+                });
+            });
+        });
+        Object.keys(retMap).forEach(d => {
+            if (d < b.start || d > b.end) return;
+            retMap[d].forEach(r => {
+                const so = ordersById[r.sales_order_id];
+                retTotal += toCNY(r.total_amount, so ? so.currency : "");
+                retCost += Utils.num(r.cost_reversal);
+            });
+        });
+        b.revenue = Utils.round(revenue);
+        b.cogs = Utils.round(cogs);
+        b.retTotal = Utils.round(retTotal);
+        b.retCost = Utils.round(retCost);
+        b.netRevenue = Utils.round(revenue - retTotal);
+        b.profit = Utils.round((revenue - retTotal) - (cogs - retCost));
+    });
+    return buckets;
+}
+
+/* SVG 分组柱状图（营收 / 销货成本 / 毛利），自适应宽度 */
+function profitChartSVG(buckets) {
+    const W = 960, H = 330, PL = 54, PR = 14, PT = 20, PB = 36;
+    const plotW = W - PL - PR, plotH = H - PT - PB;
+    const n = buckets.length;
+
+    // 值域（含负毛利）与 Y 轴 nice 刻度
+    let vmax = 0, vmin = 0;
+    buckets.forEach(b => {
+        [b.netRevenue, b.cogs - b.retCost, b.profit].forEach(v => {
+            if (v > vmax) vmax = v;
+            if (v < vmin) vmin = v;
+        });
+    });
+    const yHi = niceCeil(vmax), yLo = niceFloor(vmin);
+    const span = (yHi - yLo) || 1;
+    const y0px = PT + (yHi - 0) / span * plotH;            // 0 线像素位置
+    const yPx = v => PT + (yHi - v) / span * plotH;
+
+    // Y 网格线（4 段）
+    const gridStep = niceCeil((yHi - yLo) / 4);
+    let grid = "";
+    for (let gv = yLo; gv <= yHi + 1e-9; gv += gridStep) {
+        const gy = yPx(gv);
+        grid += `<line x1="${PL}" y1="${gy}" x2="${W - PR}" y2="${gy}" stroke="var(--line)" stroke-width="1" ${gv === 0 ? 'stroke-dasharray="0"' : 'stroke-dasharray="3 3"'}/>`;
+        grid += `<text x="${PL - 8}" y="${gy + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${fmtShort(gv)}</text>`;
+    }
+
+    // 柱体（每桶三柱：净营收 / 成本 / 毛利）
+    const bw = plotW / n;
+    const groupW = Math.min(bw * 0.62, 34);
+    const barW = Math.max(groupW / 3 - 2, 2);
+    const labelEvery = Math.ceil(n / 14);                    // X 轴标签抽稀
+    let bars = "", labels = "";
+    buckets.forEach((b, i) => {
+        const gx = PL + i * bw + (bw - groupW) / 2;
+        const gy = yPx(0);
+        const series = [
+            { v: b.netRevenue, fill: "var(--blue)", name: "净营收" },
+            { v: b.cogs - b.retCost, fill: "var(--muted)", name: "销货成本" },
+            { v: b.profit, fill: b.profit >= 0 ? "var(--green)" : "var(--danger)", name: "毛利" }
+        ];
+        series.forEach((s, j) => {
+            const x = gx + j * (barW + 2);
+            const hgt = Math.abs(s.v) / span * plotH;
+            const yy = s.v >= 0 ? gy - hgt : gy;
+            bars += `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(hgt.toFixed(1), 0.5)}" rx="1.5" fill="${s.fill}" opacity="0.92">
+                <title>${h(b.label)}｜${s.name}：${fmt(s.v)}</title></rect>`;
+        });
+        if (i % labelEvery === 0 || i === n - 1) {
+            labels += `<text x="${(gx + groupW / 2).toFixed(1)}" y="${H - 12}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${h(b.label)}</text>`;
+        }
+    });
+
+    // 0 线
+    const zero = `<line x1="${PL}" y1="${y0px.toFixed(1)}" x2="${W - PR}" y2="${y0px.toFixed(1)}" stroke="var(--text)" stroke-width="1.2" opacity="0.55"/>`;
+
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="损益走势图" class="profit-chart">
+        ${grid}${zero}${bars}${labels}
+    </svg>
+    <div class="chart-legend">
+        <span><i style="background:var(--blue)"></i>净营收</span>
+        <span><i style="background:var(--muted)"></i>销货成本</span>
+        <span><i style="background:var(--green)"></i>毛利</span>
+        <span><i style="background:var(--danger)"></i>亏损</span>
+    </div>`;
+}
+
+function niceCeil(v) {
+    if (v === 0) return 1;
+    const a = Math.abs(v);
+    const p = Math.pow(10, Math.floor(Math.log10(a)));
+    const d = a / p;
+    const m = d <= 1 ? 1 : d <= 2 ? 2 : d <= 5 ? 5 : 10;
+    return m * p * (v < 0 ? -1 : 1);
+}
+function niceFloor(v) {
+    if (v >= 0) return 0;
+    return -niceCeil(-v);
+}
+function fmtShort(v) {
+    const a = Math.abs(v);
+    if (a >= 100000000) return (v / 100000000).toFixed(1).replace(/\.0$/, "") + "亿";
+    if (a >= 10000) return (v / 10000).toFixed(1).replace(/\.0$/, "") + "万";
+    return Utils.num(v).toLocaleString("zh-CN", { maximumFractionDigits: 0 });
+}

@@ -219,7 +219,8 @@ const MENU = [
     {
         group: "报表查询", key: "reports", items: [
             { code: "inventory_overview", label: "库存总览", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
-            { code: "inventory_safety", label: "安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" }
+            { code: "inventory_safety", label: "安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" },
+            { code: "profit_report", label: "损益报表", hash: "#/report/profit", perm: "report.profit" }
         ]
     },
     {
@@ -515,7 +516,7 @@ function renderDashboard() {
 
     <section class="launch-section-grid">
         <div class="panel">
-            <div class="panel-title"><h2>本月经营摘要</h2><span style="font-size:12px;color:var(--muted)">本位币口径</span></div>
+            <div class="panel-title"><h2>本月经营摘要</h2><span style="font-size:12px;color:var(--muted)">本位币口径</span><a href="#/report/profit">查看损益报表</a></div>
             <div class="mini-metrics">
                 <div><span>营收</span><strong>${fmt(revenue)}</strong></div>
                 <div><span>销货成本</span><strong>${fmt(cogs)}</strong></div>
@@ -651,6 +652,7 @@ function route(hash) {
         "master/payment_terms": () => Pages.simpleMaster("payment_terms", "付款条件"),
         "inventory/inventory_overview": () => Pages.inventoryOverview(),
         "inventory/inventory_safety": () => Pages.inventorySafety(),
+        "report/profit": () => Pages.profitReport(),
         "tools/migration-center": () => Pages.migrationCenter(),
         "tools/system-backup": () => Pages.systemBackup(),
         "users": () => Pages.users(),
