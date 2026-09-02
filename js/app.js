@@ -201,7 +201,8 @@ const MENU = [
         group: "账款财务", key: "finance", items: [
             { code: "accounts_receivable", label: "应收账款", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
             { code: "accounts_payable", label: "应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
-            { code: "finance.bookkeeping", label: "外贸记账", hash: "#/bookkeeping", perm: "finance.bookkeeping" }
+            { code: "finance.bookkeeping", label: "外贸记账", hash: "#/bookkeeping", perm: "finance.bookkeeping" },
+            { code: "finance.quote", label: "估价试算", hash: "#/quote", perm: "finance.quote" }
         ]
     },
     {
@@ -608,6 +609,7 @@ function route(hash) {
         "tools/cloud-sync": () => Pages.cloudSync(),
         "attendance": () => Pages.attendancePage(),
         "bookkeeping": () => Pages.bookkeepingPage(),
+        "quote": () => Pages.quotationPage(),
         "master/items": () => Pages.items(),
         "master/items/create": () => Pages.itemForm(),
         "master/customers": () => Pages.customers(),

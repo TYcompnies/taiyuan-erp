@@ -102,7 +102,7 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
         });
         await test('T5 经营口径：收入与 COGS 均折 CNY', async () => {
             const r = await db(page, () => {
-                const m = '2026-08';
+                const m = Utils.today().slice(0, 7); // 出货日期=当天，按页面当前月归集（勿写死月份，跨月会失效）
                 const shipIds = DB.list('shipments').filter(s => (s.ship_date || '').startsWith(m)).map(s => s.sales_order_id);
                 const rev = DB.list('sales_orders').filter(o => shipIds.indexOf(o.id) >= 0 && o.status === 'shipped')
                     .reduce((s, o) => s + toCNY(Utils.num(o.invoice_amount), o.currency), 0);

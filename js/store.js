@@ -105,6 +105,7 @@ const DB = {
         this.migrateAttendance();
         this.migrateProfitReport();
         this.migrateBookkeeping();
+        this.migrateQuote();
         this._loaded = true;
     },
 
@@ -118,6 +119,23 @@ const DB = {
             if (perms.includes("finance.bookkeeping")) return;
             if (perms.includes("finance.ap")) {
                 perms.push("finance.bookkeeping");
+                dirty = true;
+            }
+        });
+        if (dirty) this.flush();
+    },
+
+    /* 估价试算嵌入页权限迁移（2026-09-02）：为会涉及报价与成本利润的角色补入 finance.quote
+       （幂等）。判据二选一：业务报价（sales.create 新增/编辑销货订单）或账务核算
+       （finance.bookkeeping 外贸记账），即系统管理员/管理者/业务/会计；仓管虽需查看销货单
+       （sales.view）拣货但不涉及报价定价，不授予。 */
+    migrateQuote() {
+        let dirty = false;
+        (this._mem.roles || []).forEach(r => {
+            const perms = r.permissions || [];
+            if (perms.includes("finance.quote")) return;
+            if (perms.includes("sales.create") || perms.includes("finance.bookkeeping")) {
+                perms.push("finance.quote");
                 dirty = true;
             }
         });
@@ -311,6 +329,7 @@ const PERMISSIONS = [
     { code: "finance.ar", label: "应收账款", group: "账款财务" },
     { code: "finance.ap", label: "应付账款", group: "账款财务" },
     { code: "finance.bookkeeping", label: "外贸记账（外挂复式记账系统）", group: "账款财务" },
+    { code: "finance.quote", label: "估价试算（外挂跨境成本利润试算）", group: "账款财务" },
     { code: "master.item", label: "商品主档", group: "基本资料" },
     { code: "master.customer", label: "客户主档", group: "基本资料" },
     { code: "master.supplier", label: "供应商主档", group: "基本资料" },
@@ -423,9 +442,9 @@ DB.seed = function () {
     m.roles = [
         { id: "r1", name: "系统管理员", description: "拥有全部系统权限", permissions: PERMISSIONS.map(p => p.code), created_at: now },
         { id: "r2", name: "管理者", description: "管理日常业务与报表", permissions: PERMISSIONS.filter(p => !p.code.startsWith("system.") && p.code !== "system.migration" && p.code !== "system.backup").map(p => p.code), created_at: now },
-        { id: "r3", name: "业务", description: "负责销货订单与客户", permissions: ["dashboard.view", "sales.view", "sales.create", "sales_return.view", "master.item", "master.customer", "report.inventory", "report.safety", "report.profit", "finance.ar"], created_at: now },
+        { id: "r3", name: "业务", description: "负责销货订单与客户", permissions: ["dashboard.view", "sales.view", "sales.create", "sales_return.view", "master.item", "master.customer", "report.inventory", "report.safety", "report.profit", "finance.ar", "finance.quote"], created_at: now },
         { id: "r4", name: "仓管", description: "负责出入库与库存", permissions: ["dashboard.view", "sales.view", "sales.ship", "shipment.view", "purchase.view", "purchase.receive", "inventory.view", "inventory.adjust", "master.item", "master.warehouse", "report.inventory", "report.safety", "report.profit"], created_at: now },
-        { id: "r5", name: "会计", description: "负责账款收付", permissions: ["dashboard.view", "finance.ar", "finance.ap", "finance.bookkeeping", "report.inventory", "report.safety", "report.profit"], created_at: now }
+        { id: "r5", name: "会计", description: "负责账款收付", permissions: ["dashboard.view", "finance.ar", "finance.ap", "finance.bookkeeping", "finance.quote", "report.inventory", "report.safety", "report.profit"], created_at: now }
     ];
     m.users = [
         { id: "u_adm", username: "admin", password: "admin123", name: "系统管理员", role_id: "r1", email: "admin@taiyuan.cn", phone: "13800000000", status: "启用", created_at: now, updated_at: now },
