@@ -104,7 +104,24 @@ const DB = {
         this.purgeAccounting();
         this.migrateAttendance();
         this.migrateProfitReport();
+        this.migrateBookkeeping();
         this._loaded = true;
+    },
+
+    /* 外贸记账嵌入页权限迁移（2026-09-02）：为负责账款的角色（已有 finance.ap 应付账款权限，
+       即系统管理员/管理者/会计）补入 finance.bookkeeping（幂等）。业务/仓管等不接触完整账本
+       的角色不授予，避免经营财务（凭证/科目/报表）无差别扩散。 */
+    migrateBookkeeping() {
+        let dirty = false;
+        (this._mem.roles || []).forEach(r => {
+            const perms = r.permissions || [];
+            if (perms.includes("finance.bookkeeping")) return;
+            if (perms.includes("finance.ap")) {
+                perms.push("finance.bookkeeping");
+                dirty = true;
+            }
+        });
+        if (dirty) this.flush();
     },
 
     /* 损益报表权限迁移（2026-08-28）：为已拥有报表权限（report.*）的角色补入损益报表权限（幂等）。
@@ -293,6 +310,7 @@ const PERMISSIONS = [
     { code: "attendance.view", label: "出勤管理", group: "出勤管理" },
     { code: "finance.ar", label: "应收账款", group: "账款财务" },
     { code: "finance.ap", label: "应付账款", group: "账款财务" },
+    { code: "finance.bookkeeping", label: "外贸记账（外挂复式记账系统）", group: "账款财务" },
     { code: "master.item", label: "商品主档", group: "基本资料" },
     { code: "master.customer", label: "客户主档", group: "基本资料" },
     { code: "master.supplier", label: "供应商主档", group: "基本资料" },
@@ -407,7 +425,7 @@ DB.seed = function () {
         { id: "r2", name: "管理者", description: "管理日常业务与报表", permissions: PERMISSIONS.filter(p => !p.code.startsWith("system.") && p.code !== "system.migration" && p.code !== "system.backup").map(p => p.code), created_at: now },
         { id: "r3", name: "业务", description: "负责销货订单与客户", permissions: ["dashboard.view", "sales.view", "sales.create", "sales_return.view", "master.item", "master.customer", "report.inventory", "report.safety", "report.profit", "finance.ar"], created_at: now },
         { id: "r4", name: "仓管", description: "负责出入库与库存", permissions: ["dashboard.view", "sales.view", "sales.ship", "shipment.view", "purchase.view", "purchase.receive", "inventory.view", "inventory.adjust", "master.item", "master.warehouse", "report.inventory", "report.safety", "report.profit"], created_at: now },
-        { id: "r5", name: "会计", description: "负责账款收付", permissions: ["dashboard.view", "finance.ar", "finance.ap", "report.inventory", "report.safety", "report.profit"], created_at: now }
+        { id: "r5", name: "会计", description: "负责账款收付", permissions: ["dashboard.view", "finance.ar", "finance.ap", "finance.bookkeeping", "report.inventory", "report.safety", "report.profit"], created_at: now }
     ];
     m.users = [
         { id: "u_adm", username: "admin", password: "admin123", name: "系统管理员", role_id: "r1", email: "admin@taiyuan.cn", phone: "13800000000", status: "启用", created_at: now, updated_at: now },
