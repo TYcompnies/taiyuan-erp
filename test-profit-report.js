@@ -72,7 +72,7 @@ function UtilsNum(v) { const n = parseFloat(String(v).replace(/,/g, '')); return
   console.log('\n[2] 报表查询菜单');
   const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.sidebar a')).map(a => ({ t: a.textContent.trim(), href: a.getAttribute('href') })));
   const profitMenuItem = menu.find(m => m.href === '#/report/profit');
-  check(!!profitMenuItem && profitMenuItem.t.includes('损益报表'), '侧边栏菜单含「损益报表」(#/report/profit)');
+  check(!!profitMenuItem && profitMenuItem.t.includes('进销存损益报表'), '侧边栏菜单含「进销存损益报表」(#/report/profit)');
   const groups = await page.evaluate(() => Array.from(document.querySelectorAll('.menu-main span')).map(s => s.textContent.trim()));
   check(groups.includes('报表查询'), '菜单组「报表查询」存在');
 
@@ -160,7 +160,7 @@ function UtilsNum(v) { const n = parseFloat(String(v).replace(/,/g, '')); return
   await gotoHash('#/report/profit');
   const title = await page.locator('h1').textContent().catch(() => '');
   check(title.includes('损益报表'), '路由 #/report/profit 打开损益报表页');
-  check((await bodyText()).includes('报表查询 / 损益报表'), '面包屑显示 报表查询 / 损益报表');
+  check((await bodyText()).includes('报表查询 / 进销存损益报表'), '面包屑显示 报表查询 / 进销存损益报表');
   const svg = await page.locator('svg.profit-chart').count();
   check(svg === 1, 'SVG 损益图表渲染');
   const legend = await page.locator('.chart-legend span').count();

@@ -1,5 +1,5 @@
-// 外贸记账（外挂复式记账系统嵌入页）自动化测试
-// 覆盖：账款财务→外贸记账 菜单/路由/iframe 嵌入、URL 正确、
+// 财会记账（外挂复式记账系统嵌入页）自动化测试
+// 覆盖：账款财务→财会记账 菜单/路由/iframe 嵌入、URL 正确、
 //       权限种子（admin/管理者/会计有、业务/仓管无）、migrateBookkeeping 迁移
 //       （只给已有 finance.ap 的角色补权，幂等）、无权限拒绝
 // 运行前提：本地服务器 http://127.0.0.1:8904（cd erp-clone && node serve.js 8904 .）
@@ -70,7 +70,7 @@ function check(cond, msg) {
   console.log('\n[2] 账款财务菜单');
   const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.sidebar a')).map(a => ({ t: a.textContent.trim(), href: a.getAttribute('href') })));
   const bkItem = menu.find(m => m.href === '#/bookkeeping');
-  check(!!bkItem && bkItem.t.includes('外贸记账'), '侧边栏菜单含「外贸记账」(#/bookkeeping)');
+  check(!!bkItem && bkItem.t.includes('财会记账'), '侧边栏菜单含「财会记账」(#/bookkeeping)');
   const inGroup = await page.evaluate(() => {
     const g = Array.from(document.querySelectorAll('.menu-group')).find(grp => {
       const sp = grp.querySelector('.menu-main span');
@@ -78,7 +78,7 @@ function check(cond, msg) {
     });
     return g ? Array.from(g.querySelectorAll('.menu-link')).map(a => a.textContent.trim()) : [];
   });
-  check(inGroup.includes('外贸记账'), '「外贸记账」位于账款财务菜单组');
+  check(inGroup.includes('财会记账'), '「财会记账」位于账款财务菜单组');
 
   // ========== 3. 页面渲染（iframe 嵌入） ==========
   console.log('\n[3] 外贸记账嵌入页');
@@ -99,8 +99,8 @@ function check(cond, msg) {
   check(frame.exists, 'iframe#bookkeepingFrame 存在');
   check(frame.src === BK_URL, `iframe src 为外挂记账网址（实际 ${frame.src}）`);
   check(frame.title && frame.title.includes('外贸记账'), 'iframe title 正确');
-  check(frame.toolbar.includes('41大叔外贸记账系统'), '工具栏标题「41大叔外贸记账系统」');
-  check(frame.crumb.includes('外贸记账'), '面包屑「首页 / 账款财务 / 外贸记账」');
+  check(frame.toolbar.includes('财会记账'), '工具栏标题「财会记账（41大叔外贸记账系统）」');
+  check(frame.crumb.includes('财会记账'), '面包屑「首页 / 账款财务 / 财会记账」');
   check(frame.openHref === BK_URL && frame.openTarget === '_blank', '「新窗口打开」按钮指向同一网址且 target=_blank');
 
   // ========== 4. 会计角色可见（r5 种子含 finance.bookkeeping） ==========

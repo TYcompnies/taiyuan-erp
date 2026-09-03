@@ -178,8 +178,7 @@ function poStatusBadge(st) {
 const MENU = [
     {
         group: "首页", key: "dashboard", items: [
-            { code: "dashboard", label: "Dashboard", hash: "#/dashboard", perm: "dashboard.view" },
-            { code: "daily_workflow", label: "日常流程", hash: "#/daily-workflow", perm: "workflow.view" }
+            { code: "dashboard", label: "Dashboard", hash: "#/dashboard", perm: "dashboard.view" }
         ]
     },
     {
@@ -199,9 +198,9 @@ const MENU = [
     },
     {
         group: "账款财务", key: "finance", items: [
-            { code: "accounts_receivable", label: "应收账款", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
-            { code: "accounts_payable", label: "应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
-            { code: "finance.bookkeeping", label: "外贸记账", hash: "#/bookkeeping", perm: "finance.bookkeeping" },
+            { code: "accounts_receivable", label: "进销存应收账款", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
+            { code: "accounts_payable", label: "进销存应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
+            { code: "finance.bookkeeping", label: "财会记账", hash: "#/bookkeeping", perm: "finance.bookkeeping" },
             { code: "finance.quote", label: "估价试算", hash: "#/quote", perm: "finance.quote" }
         ]
     },
@@ -220,9 +219,9 @@ const MENU = [
     },
     {
         group: "报表查询", key: "reports", items: [
-            { code: "inventory_overview", label: "库存总览", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
-            { code: "inventory_safety", label: "安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" },
-            { code: "profit_report", label: "损益报表", hash: "#/report/profit", perm: "report.profit" }
+            { code: "inventory_overview", label: "进销存库存总览", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
+            { code: "inventory_safety", label: "进销存安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" },
+            { code: "profit_report", label: "进销存损益报表", hash: "#/report/profit", perm: "report.profit" }
         ]
     },
     {
@@ -462,7 +461,6 @@ function renderDashboard() {
             <p>把订单、采购、出货、库存与账款串起来检查；有阻挡项先处理，避免上线后资料不好追。</p>
         </div>
         <div class="head-actions">
-            <a class="btn primary" href="#/daily-workflow">日常流程</a>
             <a class="btn ghost" href="#/purchase-orders/create">新增采购单</a>
             <a class="btn primary" href="#/sales-orders/create">新增销货订单</a>
             <a class="btn ghost" href="#/inventory/inventory_adjust">拆包/组包</a>
@@ -525,42 +523,6 @@ function renderDashboard() {
     renderShell("dashboard", content, "首页 / ERP");
 }
 
-/* ---------------- 日常流程 ---------------- */
-function renderDailyWorkflow() {
-    const flows = [
-        { icon: "🛒", title: "新增采购单", desc: "向供应商下单，进货后增加库存并形成应付账款。", hash: "#/purchase-orders/create", perm: "purchase.create" },
-        { icon: "📦", title: "进货入库", desc: "采购单到货后执行进货入库，更新库存。", hash: "#/purchase-orders", perm: "purchase.receive" },
-        { icon: "🧾", title: "新增销货订单", desc: "建立销售订单，记录客户、商品与售价。", hash: "#/sales-orders/create", perm: "sales.create" },
-        { icon: "🚚", title: "出货扣库存", desc: "订单出货：扣减库存、锁定成本并建立出货单。", hash: "#/sales-orders", perm: "sales.ship" },
-        { icon: "🏷️", title: "库存调整", desc: "盘点差异、拆包/组包等库存异动。", hash: "#/inventory/inventory_adjust", perm: "inventory.adjust" },
-        { icon: "↩️", title: "销货退回/折让", desc: "客户退货或折让，回冲应收并增加库存。", hash: "#/sales-returns/create", perm: "sales_return.view" },
-        { icon: "💰", title: "应收账款", desc: "出货订单登记收款，追踪未收金额。", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
-        { icon: "💸", title: "应付账款", desc: "进货采购登记付款，追踪未付金额。", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
-        { icon: "📈", title: "库存总览", desc: "查询各仓库商品库存数量与价值。", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
-        { icon: "💾", title: "系统备份", desc: "定期备份系统数据，降低遗失风险。", hash: "#/tools/system-backup", perm: "system.backup" },
-        { icon: "📥", title: "Excel 导入中心", desc: "批量导入商品、客户等主档资料。", hash: "#/tools/migration-center", perm: "system.migration" }
-    ].filter(f => can(f.perm));
-
-    const content = `
-    <div class="page-head">
-        <div><h1>日常流程</h1><p>从采购进货到销货出货，再到收付款的标准作业流程。</p></div>
-        <div class="head-actions"><a class="btn primary" href="#/dashboard">返回仪表板</a></div>
-    </div>
-    <div class="ops-flow-panel" style="margin-bottom:18px">
-        <p class="eyebrow">标准作业流程</p>
-        <div class="flow-steps">
-            <span>采购单</span><b>→</b><span>进货入库 / 应付</span><b>→</b><span>销货订单</span><b>→</b><span>出货扣库存 / 应收</span><b>→</b><span>收付款</span>
-        </div>
-    </div>
-    <div class="flow-card-grid">
-        ${flows.map(f => `<a class="flow-card" href="${f.hash}">
-            <div class="fc-icon">${f.icon}</div>
-            <h3>${f.title}</h3><p>${f.desc}</p>
-        </a>`).join("")}
-    </div>`;
-    renderShell("daily_workflow", content, "首页 / 日常流程");
-}
-
 /* ---------------- 主渲染 ---------------- */
 function render() {
     if (!DB.currentUser() && location.hash !== "#/login" && !location.hash) {
@@ -592,7 +554,6 @@ function route(hash) {
 
     const routes = {
         "dashboard": renderDashboard,
-        "daily-workflow": renderDailyWorkflow,
         "sales-orders": () => Pages.salesOrders(),
         "sales-orders/create": () => Pages.salesOrderForm(),
         "shipments": () => Pages.shipments(),

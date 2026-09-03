@@ -68,14 +68,14 @@ async function login(page) {
             const hit = labels.filter(l => gone.includes(l));
             if (hit.length) throw new Error('菜单仍包含: ' + hit.join(','));
         });
-        await test('R4 菜单保留应收账款/应付账款', async () => {
+        await test('R4 菜单保留进销存应收账款/进销存应付账款', async () => {
             const labels = await page.evaluate(() => {
                 const arr = [];
                 document.querySelectorAll('.menu-link, .menu a').forEach(a => arr.push(a.textContent.trim()));
                 return arr;
             });
-            if (!labels.includes('应收账款')) throw new Error('缺少 应收账款');
-            if (!labels.includes('应付账款')) throw new Error('缺少 应付账款');
+            if (!labels.includes('进销存应收账款')) throw new Error('缺少 进销存应收账款');
+            if (!labels.includes('进销存应付账款')) throw new Error('缺少 进销存应付账款');
         });
 
         /* ---------- 3. 路由移除（回首页） ---------- */
@@ -91,7 +91,7 @@ async function login(page) {
         }
 
         /* ---------- 4. AR/AP 保留可用 ---------- */
-        await test('R6 应收账款页正常渲染（收款登记入口）', async () => {
+        await test('R6 进销存应收账款页正常渲染（收款登记入口）', async () => {
             await page.evaluate(() => { location.hash = '#/accounting/accounts-receivable'; });
             await page.waitForTimeout(600);
             const t = await page.evaluate(() => document.body.textContent);
@@ -99,7 +99,7 @@ async function login(page) {
             const fn = await page.evaluate(() => typeof Pages.receivePayment);
             if (fn !== 'function') throw new Error('receivePayment 函数缺失: ' + fn);
         });
-        await test('R7 应付账款页正常渲染（付款登记入口）', async () => {
+        await test('R7 进销存应付账款页正常渲染（付款登记入口）', async () => {
             await page.evaluate(() => { location.hash = '#/accounting/accounts-payable'; });
             await page.waitForTimeout(600);
             const t = await page.evaluate(() => document.body.textContent);
@@ -163,11 +163,14 @@ async function login(page) {
             if (t.indexOf('本月毛利') >= 0) throw new Error('仍有本月毛利 KPI（已移至损益报表页）');
             if (t.indexOf('本月经营摘要') >= 0) throw new Error('仍有本月经营摘要面板（已移至损益报表页）');
         });
-        await test('R13 日常流程页无费用/传票/损益卡片', async () => {
+        await test('R13 路由 #/daily-workflow 已移除（日常流程页删除，回到首页）', async () => {
+            await page.goto(BASE + '/?daily-workflow#/daily-workflow'); // 保持会话
             await page.evaluate(() => { location.hash = '#/daily-workflow'; });
             await page.waitForTimeout(600);
+            const ok = await page.evaluate(() => location.hash === '#/dashboard' || document.body.textContent.indexOf('找不到该页面') >= 0);
+            if (!ok) throw new Error('当前 hash=' + location.hash);
             const t = await page.evaluate(() => document.body.textContent);
-            if (t.indexOf('费用支出') >= 0 || t.indexOf('传票作业') >= 0 || t.indexOf('损益表') >= 0) throw new Error('日常流程仍含会计卡片');
+            if (t.indexOf('标准作业流程') >= 0) throw new Error('日常流程引导内容仍可访问');
         });
 
         /* ---------- 8. 业务流程不受影响（出货不再联动传票但库存正常） ---------- */

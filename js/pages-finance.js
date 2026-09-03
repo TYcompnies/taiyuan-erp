@@ -43,8 +43,8 @@ Pages.accountsReceivable = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>应收账款</h1><p>追踪已出货订单的未收款；登记收款后金额实时更新，外币附本位币换算（${COMPANY.baseCurrency}）。</p></div>
-        <div class="head-actions"><a class="btn ghost" href="#/accounting/income-statement">损益表</a></div>
+        <div><h1>进销存应收账款</h1><p>追踪已出货订单的未收款；登记收款后金额实时更新，外币附本位币换算（${COMPANY.baseCurrency}）。</p></div>
+        <div class="head-actions"><a class="btn ghost" href="#/report/profit">进销存损益报表</a></div>
     </div>
     <div class="kpi-grid">
         <div class="kpi-card"><span>未收应收（本位币）</span><strong style="color:var(--danger)">${fmt(totalReceivable)}</strong><p>所有已出货未收款折合 ${COMPANY.baseCurrency}</p></div>
@@ -57,7 +57,7 @@ Pages.accountsReceivable = function () {
             <tbody>${rows || `<tr><td colspan="10"><div class="empty-state"><div class="big">💰</div>暂无应收账款</div></td></tr>`}</tbody>
         </table>
     </div>`;
-    renderShell("accounts_receivable", content, "首页 / 账款财务 / 应收账款");
+    renderShell("accounts_receivable", content, "首页 / 账款财务 / 进销存应收账款");
 };
 
 Pages.receivePayment = function (id) {
@@ -159,8 +159,8 @@ Pages.accountsPayable = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>应付账款</h1><p>追踪已进货采购单的未付款；登记付款后金额实时更新，外币附本位币换算（${COMPANY.baseCurrency}）。</p></div>
-        <div class="head-actions"><a class="btn ghost" href="#/accounting/income-statement">损益表</a></div>
+        <div><h1>进销存应付账款</h1><p>追踪已进货采购单的未付款；登记付款后金额实时更新，外币附本位币换算（${COMPANY.baseCurrency}）。</p></div>
+        <div class="head-actions"><a class="btn ghost" href="#/report/profit">进销存损益报表</a></div>
     </div>
     <div class="kpi-grid">
         <div class="kpi-card"><span>未付应付（本位币）</span><strong style="color:var(--danger)">${fmt(totalPayable)}</strong><p>所有已进货未付款折合 ${COMPANY.baseCurrency}</p></div>
@@ -173,7 +173,7 @@ Pages.accountsPayable = function () {
             <tbody>${rows || `<tr><td colspan="10"><div class="empty-state"><div class="big">💰</div>暂无应付账款</div></td></tr>`}</tbody>
         </table>
     </div>`;
-    renderShell("accounts_payable", content, "首页 / 账款财务 / 应付账款");
+    renderShell("accounts_payable", content, "首页 / 账款财务 / 进销存应付账款");
 };
 
 Pages.payPO = function (id) {

@@ -14,7 +14,7 @@ Pages.bookkeepingPage = function () {
     <div class="bk-embed">
         <div class="bk-toolbar">
             <div class="bk-toolbar-info">
-                <strong>41大叔外贸记账系统（复式记账）</strong>
+                <strong>财会记账（41大叔外贸记账系统）</strong>
                 <span>免登录直接使用 · 凭证/科目/财务报表/损益图表 · MQTT 即时云同步（所有装置读写同一份云端帐本）</span>
             </div>
             <div class="bk-toolbar-actions">
@@ -26,5 +26,5 @@ Pages.bookkeepingPage = function () {
                 referrerpolicy="no-referrer-when-downgrade" allow="clipboard-write"></iframe>
         </div>
     </div>`;
-    renderShell("finance.bookkeeping", html, "首页 / 账款财务 / 外贸记账");
+    renderShell("finance.bookkeeping", html, "首页 / 账款财务 / 财会记账");
 };

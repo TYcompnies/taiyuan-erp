@@ -78,35 +78,57 @@ const Utils = {
 const DB = {
     _mem: null,
     _loaded: false,
+    _loading: false,
 
     load() {
-        if (this._loaded) return;
+        if (this._loaded || this._loading) return; // _loading：防迁移期间 coll/get→load 重入死循环
+        this._loading = true;
         try {
-            const raw = localStorage.getItem("taiyuan_erp_data_v1");
-            if (raw) {
-                this._mem = JSON.parse(raw);
+            try {
+                const raw = localStorage.getItem("taiyuan_erp_data_v1");
+                if (raw) {
+                    this._mem = JSON.parse(raw);
+                }
+            } catch (e) { /* ignore */ }
+            if (!this._mem || !this._mem.items) {
+                this._mem = { version: 2, seeded: false };
             }
-        } catch (e) { /* ignore */ }
-        if (!this._mem || !this._mem.items) {
-            this._mem = { version: 2, seeded: false };
+            this.migrate();
+            this.purgeAccounting();
+            this.migrateAttendance();
+            this.migrateProfitReport();
+            this.migrateBookkeeping();
+            this.migrateQuote();
+            this._loaded = true;
+        } finally {
+            this._loading = false;
         }
+    },
+
+    /* 版本迁移总闸（DB.load 与 sync.applyRemote 套用远端后都会执行，幂等）：
+       - 无种子 → 首次建立（dbVersion 3）
+       - dbVersion < 2 → 旧版全清业务数据（历史行为）
+       - dbVersion 2 → 3（2026-09-03）：清除采购单/采购退回折让并回冲库存；
+         摘除已删除的「日常流程」权限 workflow.view（菜单/页面/路由已随本版移除） */
+    migrate() {
+        if (!this._mem) return;
         if (!this._mem.seeded) {
             this.seed();
             this._mem.seeded = true;
-            this._mem.dbVersion = 2;
+            this._mem.dbVersion = 3;
             this.flush();
-        } else if (this._mem.dbVersion !== 2) {
-            // 旧版数据迁移：清空业务数据（销货单/出货单/采购单/库存调整/退回/费用/传票/商品/库存），保留基础资料
-            this.clearBusiness();
-            this._mem.dbVersion = 2;
-            this.flush();
+            return;
         }
-        this.purgeAccounting();
-        this.migrateAttendance();
-        this.migrateProfitReport();
-        this.migrateBookkeeping();
-        this.migrateQuote();
-        this._loaded = true;
+        if ((this._mem.dbVersion || 0) >= 3) return;
+        if ((this._mem.dbVersion || 0) < 2) this.clearBusiness();
+        this.purgePurchasing();
+        (this._mem.roles || []).forEach(r => {
+            if (r.permissions && r.permissions.includes("workflow.view")) {
+                r.permissions = r.permissions.filter(pc => pc !== "workflow.view");
+            }
+        });
+        this._mem.dbVersion = 3;
+        this.flush();
     },
 
     /* 外贸记账嵌入页权限迁移（2026-09-02）：为负责账款的角色（已有 finance.ap 应付账款权限，
@@ -307,13 +329,53 @@ const DB = {
         m.stock = {};
         this.flush();
         return true;
+    },
+
+    /* 清除采购资料（2026-09-03，dbVersion 2→3 迁移）：清空采购单与采购退回/折让，
+       并回冲采购环节造成的库存净变动（已进货的加量扣回、退回的扣减复原），
+       使库存回到未受采购影响的存量；保留商品/客户/供应商/销货出货等其余资料。
+       在 DB.load 与 sync.applyRemote 套用远端后都会执行（幂等：无采购资料即 noop）。 */
+    purgePurchasing() {
+        const m = this._mem || (this.load(), this._mem);
+        const sm = this.stockMap();
+        // 用局部商品索引查换算率——严禁走 this.get/coll（coll 会调 load，而本函数在
+        // load→migrate 链内执行，_loaded 未置位会导致 load 无限重入 RangeError）
+        const itemsById = {};
+        (m.items || []).forEach(it => { itemsById[it.id] = it; });
+        const applyDelta = (wh, itemId, d) => {
+            if (!wh || !itemId) return;
+            if (!sm[wh]) sm[wh] = {};
+            sm[wh][itemId] = Utils.round(Utils.num(sm[wh][itemId]) + Utils.num(d), 4);
+        };
+        const rateOf = it => (it && Utils.num(it.purchase_to_stock) > 0 ? Utils.num(it.purchase_to_stock) : 1);
+        (m.purchase_orders || []).forEach(po => {
+            if (po.status === "received" && po.warehouse_id) {
+                (po.lines || []).forEach(l =>
+                    applyDelta(po.warehouse_id, l.item_id, -Utils.num(l.qty) * rateOf(itemsById[l.item_id])));
+            }
+        });
+        (m.purchase_returns || []).forEach(r => {
+            if (r.type === "退回" && r.warehouse_id) {
+                (r.lines || []).forEach(l =>
+                    applyDelta(r.warehouse_id, l.item_id, Utils.num(l.qty) * rateOf(itemsById[l.item_id])));
+            }
+        });
+        if (m.purchase_orders) m.purchase_orders = [];
+        if (m.purchase_returns) m.purchase_returns = [];
+        // 清理归零/空仓库键，保持库存表干净
+        Object.keys(sm).forEach(wh => {
+            const o = sm[wh];
+            Object.keys(o).forEach(k => { if (Math.abs(Utils.num(o[k])) < 1e-9) delete o[k]; });
+            if (!Object.keys(o).length) delete sm[wh];
+        });
+        this.flush();
+        return true;
     }
 };
 
 /* ---------------- 权限定义 ---------------- */
 const PERMISSIONS = [
     { code: "dashboard.view", label: "查看仪表板", group: "首页" },
-    { code: "workflow.view", label: "查看日常流程", group: "首页" },
     { code: "sales.view", label: "查看销货订单", group: "日常作业" },
     { code: "sales.create", label: "新增/编辑销货订单", group: "日常作业" },
     { code: "sales.ship", label: "出货扣库", group: "日常作业" },
@@ -326,18 +388,18 @@ const PERMISSIONS = [
     { code: "sales_return.view", label: "查看销货退回/折让", group: "日常作业" },
     { code: "purchase_return.view", label: "查看采购退回/折让", group: "日常作业" },
     { code: "attendance.view", label: "出勤管理", group: "出勤管理" },
-    { code: "finance.ar", label: "应收账款", group: "账款财务" },
-    { code: "finance.ap", label: "应付账款", group: "账款财务" },
-    { code: "finance.bookkeeping", label: "外贸记账（外挂复式记账系统）", group: "账款财务" },
+    { code: "finance.ar", label: "进销存应收账款", group: "账款财务" },
+    { code: "finance.ap", label: "进销存应付账款", group: "账款财务" },
+    { code: "finance.bookkeeping", label: "财会记账（外挂财会记账系统）", group: "账款财务" },
     { code: "finance.quote", label: "估价试算（外挂跨境成本利润试算）", group: "账款财务" },
     { code: "master.item", label: "商品主档", group: "基本资料" },
     { code: "master.customer", label: "客户主档", group: "基本资料" },
     { code: "master.supplier", label: "供应商主档", group: "基本资料" },
     { code: "master.warehouse", label: "仓库主档", group: "基本资料" },
     { code: "master.basic", label: "基础设置(单位/币别/分类等)", group: "基本资料" },
-    { code: "report.inventory", label: "库存总览", group: "报表查询" },
-    { code: "report.safety", label: "安全库存报表", group: "报表查询" },
-    { code: "report.profit", label: "损益报表", group: "报表查询" },
+    { code: "report.inventory", label: "进销存库存总览", group: "报表查询" },
+    { code: "report.safety", label: "进销存安全库存", group: "报表查询" },
+    { code: "report.profit", label: "进销存损益报表", group: "报表查询" },
     { code: "system.migration", label: "Excel 导入中心", group: "系统设置" },
     { code: "system.backup", label: "系统备份", group: "系统设置" },
     { code: "system.sync", label: "云端同步", group: "系统设置" },

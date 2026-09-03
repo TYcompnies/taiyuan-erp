@@ -118,7 +118,7 @@ Pages.salesOrders = function () {
         <div><h1>销货订单</h1><p>订单负责成交、出货与应收依据；收款登记在应收账款。</p></div>
         <div class="head-actions">
             ${can("sales.create") ? `<a class="btn primary" href="#/sales-orders/create">+ 新增销货订单</a>` : ""}
-            <a class="btn ghost" href="#/accounting/accounts-receivable">应收账款</a>
+            <a class="btn ghost" href="#/accounting/accounts-receivable">进销存应收账款</a>
         </div>
     </div>
     <div class="toolbar">
@@ -442,7 +442,7 @@ Pages.salesOrderForm = function (id) {
         <p>订单负责成交、出货与应收依据；收款登记在应收账款，避免订单画面过度复杂。</p></div>
         <div class="actions">
             <a class="btn" href="#/sales-orders">返回订单</a>
-            <a class="btn" href="#/accounting/accounts-receivable">应收账款</a>
+            <a class="btn" href="#/accounting/accounts-receivable">进销存应收账款</a>
         </div>
     </div>
 
@@ -976,7 +976,7 @@ Pages.purchaseOrders = function () {
         <div><h1>采购单</h1><p>向供应商下单，进货后增加库存并形成应付账款。</p></div>
         <div class="head-actions">
             ${can("purchase.create") ? `<a class="btn primary" href="#/purchase-orders/create">+ 新增采购单</a>` : ""}
-            <a class="btn ghost" href="#/accounting/accounts-payable">应付账款</a>
+            <a class="btn ghost" href="#/accounting/accounts-payable">进销存应付账款</a>
         </div>
     </div>
     <div class="table-wrap list-scroll">

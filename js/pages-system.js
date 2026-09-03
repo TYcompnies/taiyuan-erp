@@ -56,8 +56,8 @@ Pages.inventoryOverview = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>库存总览</h1><p>查询各仓库商品库存数量、成本与库存价值（本位币 ${COMPANY.baseCurrency}）。</p></div>
-        <div class="head-actions"><a class="btn ghost" href="#/inventory/inventory_safety">安全库存</a></div>
+        <div><h1>进销存库存总览</h1><p>查询各仓库商品库存数量、成本与库存价值（本位币 ${COMPANY.baseCurrency}）。</p></div>
+        <div class="head-actions"><a class="btn ghost" href="#/inventory/inventory_safety">进销存安全库存</a></div>
     </div>
     <div class="toolbar">
         <div class="search"><input placeholder="搜索品号/品名..." value="${h(window.__invSearch || "")}" oninput="Pages.invSearch(this.value)"></div>
@@ -69,7 +69,7 @@ Pages.inventoryOverview = function () {
             <tbody>${rows || `<tr><td colspan="14"><div class="empty-state"><div class="big">📦</div>没有符合的库存资料</div></td></tr>`}</tbody>
         </table>
     </div>`;
-    renderShell("inventory_overview", content, "首页 / 报表查询 / 库存总览");
+    renderShell("inventory_overview", content, "首页 / 报表查询 / 进销存库存总览");
 };
 
 Pages.invSearch = function (v) { window.__invSearch = v; Pages.inventoryOverview(); };
@@ -105,8 +105,8 @@ Pages.inventorySafety = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>安全库存报表</h1><p>低于安全库存的商品需要评估是否采购；负库存需修正。</p></div>
-        <div class="head-actions"><a class="btn ghost" href="#/inventory/inventory_overview">库存总览</a></div>
+        <div><h1>进销存安全库存</h1><p>低于安全库存的商品需要评估是否采购；负库存需修正。</p></div>
+        <div class="head-actions"><a class="btn ghost" href="#/inventory/inventory_overview">进销存库存总览</a></div>
     </div>
     <div class="kpi-grid">
         <div class="kpi-card"><span>库存充足</span><strong style="color:var(--green)">${items.length - lowCount - negCount}</strong><p>高于或等于安全库存</p></div>
@@ -119,7 +119,7 @@ Pages.inventorySafety = function () {
             <tbody>${rows}</tbody>
         </table>
     </div>`;
-    renderShell("inventory_safety", content, "首页 / 报表查询 / 安全库存");
+    renderShell("inventory_safety", content, "首页 / 报表查询 / 进销存安全库存");
 };
 
 /* ============================================================
@@ -705,7 +705,7 @@ Pages.profitReport = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>损益报表</h1><p>营收 / 销货成本 / 毛利走势（本位币 ${COMPANY.baseCurrency}，收入按出货日期归属、销退冲减）。</p></div>
+        <div><h1>进销存损益报表</h1><p>营收 / 销货成本 / 毛利走势（本位币 ${COMPANY.baseCurrency}，收入按出货日期归属、销退冲减）。</p></div>
         <div class="head-actions"><a class="btn ghost" href="#/dashboard">仪表板</a></div>
     </div>
     <div class="toolbar">
@@ -747,7 +747,7 @@ Pages.profitReport = function () {
             </tr></tbody>
         </table>
     </div>`;
-    renderShell("profit_report", content, "首页 / 报表查询 / 损益报表");
+    renderShell("profit_report", content, "首页 / 报表查询 / 进销存损益报表");
 };
 
 Pages.setProfitMode = function (mode) {

@@ -78,7 +78,7 @@ function check(cond, msg) {
     return g ? Array.from(g.querySelectorAll('.menu-link')).map(a => a.textContent.trim()) : [];
   });
   check(inGroup.includes('估价试算'), '「估价试算」位于账款财务菜单组');
-  check(inGroup.indexOf('外贸记账') < inGroup.indexOf('估价试算'), '「估价试算」排在「外贸记账」之后');
+  check(inGroup.indexOf('财会记账') < inGroup.indexOf('估价试算'), '「估价试算」排在「财会记账」之后');
 
   // ========== 3. 页面渲染（iframe 嵌入） ==========
   console.log('\n[3] 估价试算嵌入页');
