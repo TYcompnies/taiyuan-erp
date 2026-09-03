@@ -1,5 +1,5 @@
-// 财会记账（外挂复式记账系统嵌入页）自动化测试
-// 覆盖：账款财务→财会记账 菜单/路由/iframe 嵌入、URL 正确、
+// 财务会记（外挂复式记账系统嵌入页）自动化测试
+// 覆盖：进销存账款/财务→财务会记 菜单/路由/iframe 嵌入、URL 正确、
 //       权限种子（admin/管理者/会计有、业务/仓管无）、migrateBookkeeping 迁移
 //       （只给已有 finance.ap 的角色补权，幂等）、无权限拒绝
 // 运行前提：本地服务器 http://127.0.0.1:8904（cd erp-clone && node serve.js 8904 .）
@@ -67,18 +67,18 @@ function check(cond, msg) {
   check((await bodyText()).includes('仪表板'), '管理员登录成功');
 
   // ========== 2. 菜单含外贸记账 ==========
-  console.log('\n[2] 账款财务菜单');
+  console.log('\n[2] 进销存账款/财务菜单');
   const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.sidebar a')).map(a => ({ t: a.textContent.trim(), href: a.getAttribute('href') })));
   const bkItem = menu.find(m => m.href === '#/bookkeeping');
-  check(!!bkItem && bkItem.t.includes('财会记账'), '侧边栏菜单含「财会记账」(#/bookkeeping)');
+  check(!!bkItem && bkItem.t.includes('财务会记'), '侧边栏菜单含「财务会记」(#/bookkeeping)');
   const inGroup = await page.evaluate(() => {
     const g = Array.from(document.querySelectorAll('.menu-group')).find(grp => {
       const sp = grp.querySelector('.menu-main span');
-      return sp && sp.textContent.trim() === '账款财务';
+      return sp && sp.textContent.trim() === '进销存账款/财务';
     });
     return g ? Array.from(g.querySelectorAll('.menu-link')).map(a => a.textContent.trim()) : [];
   });
-  check(inGroup.includes('财会记账'), '「财会记账」位于账款财务菜单组');
+  check(inGroup.includes('财务会记'), '「财务会记」位于进销存账款/财务菜单组');
 
   // ========== 3. 页面渲染（iframe 嵌入） ==========
   console.log('\n[3] 外贸记账嵌入页');
@@ -99,8 +99,8 @@ function check(cond, msg) {
   check(frame.exists, 'iframe#bookkeepingFrame 存在');
   check(frame.src === BK_URL, `iframe src 为外挂记账网址（实际 ${frame.src}）`);
   check(frame.title && frame.title.includes('外贸记账'), 'iframe title 正确');
-  check(frame.toolbar.includes('财会记账'), '工具栏标题「财会记账（41大叔外贸记账系统）」');
-  check(frame.crumb.includes('财会记账'), '面包屑「首页 / 账款财务 / 财会记账」');
+  check(frame.toolbar.includes('财务会记'), '工具栏标题「财务会记（41大叔外贸记账系统）」');
+  check(frame.crumb.includes('财务会记') && frame.crumb.includes('进销存账款/财务'), '面包屑「首页 / 进销存账款/财务 / 财务会记」');
   check(frame.openHref === BK_URL && frame.openTarget === '_blank', '「新窗口打开」按钮指向同一网址且 target=_blank');
 
   // ========== 4. 会计角色可见（r5 种子含 finance.bookkeeping） ==========

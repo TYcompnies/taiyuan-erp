@@ -15,17 +15,17 @@ Pages.quotationPage = function () {
     <div class="bk-embed">
         <div class="bk-toolbar">
             <div class="bk-toolbar-info">
-                <strong>估价试算（跨境成本利润分析）</strong>
+                <strong>商品估价试算（跨境成本利润分析）</strong>
                 <span>免登录直接使用 · 进口电商利润试算（采购→报关→淘宝/抖音/小红书/盘商）· 出口 EXW/FOB 估价 · 数据随网址同步备份 · 与 ERP 数据隔离</span>
             </div>
             <div class="bk-toolbar-actions">
-                <a class="btn" href="${QUOTATION_URL}" target="_blank" rel="noopener" title="在新窗口独立打开估价试算">↗ 新窗口打开</a>
+                <a class="btn" href="${QUOTATION_URL}" target="_blank" rel="noopener" title="在新窗口独立打开商品估价试算">↗ 新窗口打开</a>
             </div>
         </div>
         <div class="bk-frame-wrap">
-            <iframe id="quotationFrame" src="${QUOTATION_URL}" title="估价试算"
+            <iframe id="quotationFrame" src="${QUOTATION_URL}" title="商品估价试算"
                 referrerpolicy="no-referrer-when-downgrade" allow="clipboard-write"></iframe>
         </div>
     </div>`;
-    renderShell("finance.quote", html, "首页 / 账款财务 / 估价试算");
+    renderShell("finance.quote", html, "首页 / 进销存账款/财务 / 商品估价试算");
 };

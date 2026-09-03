@@ -1,5 +1,5 @@
 /* ============================================================
-   义乌市钛沅商贸有限公司 ERP 系统 - 账款财务页面
+   义乌市钛沅商贸有限公司 ERP 系统 - 进销存账款/财务页面
    应收账款（收款登记）/ 应付账款（付款登记）
    （会计模块——传票/科目/总账/试算/资产负债表/损益表与费用支出已于 2026-08-28 移除）
    ============================================================ */
@@ -57,7 +57,7 @@ Pages.accountsReceivable = function () {
             <tbody>${rows || `<tr><td colspan="10"><div class="empty-state"><div class="big">💰</div>暂无应收账款</div></td></tr>`}</tbody>
         </table>
     </div>`;
-    renderShell("accounts_receivable", content, "首页 / 账款财务 / 进销存应收账款");
+    renderShell("accounts_receivable", content, "首页 / 进销存账款/财务 / 进销存应收账款");
 };
 
 Pages.receivePayment = function (id) {
@@ -173,7 +173,7 @@ Pages.accountsPayable = function () {
             <tbody>${rows || `<tr><td colspan="10"><div class="empty-state"><div class="big">💰</div>暂无应付账款</div></td></tr>`}</tbody>
         </table>
     </div>`;
-    renderShell("accounts_payable", content, "首页 / 账款财务 / 进销存应付账款");
+    renderShell("accounts_payable", content, "首页 / 进销存账款/财务 / 进销存应付账款");
 };
 
 Pages.payPO = function (id) {

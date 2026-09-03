@@ -1,4 +1,4 @@
-// 用户反馈问题复现脚本：采购单合计/库存总揽TY0001/安全库存/账款财务/仪表板营收口径/出货单按钮
+// 用户反馈问题复现脚本：采购单合计/库存总揽TY0001/安全库存/进销存账款/财务/仪表板营收口径/出货单按钮
 const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8902';
 let pass = 0, fail = 0, failures = [];

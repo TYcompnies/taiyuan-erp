@@ -1,5 +1,5 @@
 // 估价试算（外挂跨境成本利润试算嵌入页）自动化测试
-// 覆盖：账款财务→估价试算 菜单/路由/iframe 嵌入、URL 正确、
+// 覆盖：进销存账款/财务→商品估价试算 菜单/路由/iframe 嵌入、URL 正确、
 //       权限种子（管理员/管理者/业务/会计有、仓管无）、migrateQuote 迁移
 //       （判据 sales.view 或 finance.bookkeeping，幂等）、无权限拒绝
 // 运行前提：本地服务器 http://127.0.0.1:8904（cd erp-clone && node serve.js 8904 .）
@@ -65,23 +65,23 @@ function check(cond, msg) {
   await login('admin', 'admin123');
   check((await bodyText()).includes('仪表板'), '管理员登录成功');
 
-  // ========== 2. 菜单含估价试算 ==========
-  console.log('\n[2] 账款财务菜单');
+  // ========== 2. 菜单含商品估价试算 ==========
+  console.log('\n[2] 进销存账款/财务菜单');
   const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.sidebar a')).map(a => ({ t: a.textContent.trim(), href: a.getAttribute('href') })));
   const qtItem = menu.find(m => m.href === '#/quote');
-  check(!!qtItem && qtItem.t.includes('估价试算'), '侧边栏菜单含「估价试算」(#/quote)');
+  check(!!qtItem && qtItem.t.includes('商品估价试算'), '侧边栏菜单含「商品估价试算」(#/quote)');
   const inGroup = await page.evaluate(() => {
     const g = Array.from(document.querySelectorAll('.menu-group')).find(grp => {
       const sp = grp.querySelector('.menu-main span');
-      return sp && sp.textContent.trim() === '账款财务';
+      return sp && sp.textContent.trim() === '进销存账款/财务';
     });
     return g ? Array.from(g.querySelectorAll('.menu-link')).map(a => a.textContent.trim()) : [];
   });
-  check(inGroup.includes('估价试算'), '「估价试算」位于账款财务菜单组');
-  check(inGroup.indexOf('财会记账') < inGroup.indexOf('估价试算'), '「估价试算」排在「财会记账」之后');
+  check(inGroup.includes('商品估价试算'), '「商品估价试算」位于进销存账款/财务菜单组');
+  check(inGroup.indexOf('财务会记') < inGroup.indexOf('商品估价试算'), '「商品估价试算」排在「财务会记」之后');
 
   // ========== 3. 页面渲染（iframe 嵌入） ==========
-  console.log('\n[3] 估价试算嵌入页');
+  console.log('\n[3] 商品估价试算嵌入页');
   await gotoHash('#/quote');
   const frame = await page.evaluate(() => {
     const f = document.getElementById('quotationFrame');
@@ -98,11 +98,11 @@ function check(cond, msg) {
     };
   });
   check(frame.exists, 'iframe#quotationFrame 存在');
-  check(frame.src === QT_URL, `iframe src 为估价试算网址（实际 ${frame.src}）`);
-  check(frame.title && frame.title.includes('估价试算'), 'iframe title 正确');
-  check(frame.toolbar.includes('估价试算'), '工具栏标题含「估价试算」');
+  check(frame.src === QT_URL, `iframe src 为商品估价试算网址（实际 ${frame.src}）`);
+  check(frame.title && frame.title.includes('商品估价试算'), 'iframe title 正确');
+  check(frame.toolbar.includes('商品估价试算'), '工具栏标题含「商品估价试算」');
   check(frame.desc.includes('EXW/FOB'), '工具栏说明含 EXW/FOB 出口估价描述');
-  check(frame.crumb.includes('估价试算'), '面包屑「首页 / 账款财务 / 估价试算」');
+  check(frame.crumb.includes('商品估价试算') && frame.crumb.includes('进销存账款/财务'), '面包屑「首页 / 进销存账款/财务 / 商品估价试算」');
   check(frame.openHref === QT_URL && frame.openTarget === '_blank', '「新窗口打开」按钮指向同一网址且 target=_blank');
 
   // ========== 4. 角色种子权限 ==========
@@ -120,20 +120,20 @@ function check(cond, msg) {
   console.log('\n[5] 会计与业务可见');
   await page.evaluate(() => DB.clearSession());
   await login('accounting', '123456');
-  check((await menuHrefs()).includes('#/quote'), '会计账号菜单含估价试算');
+  check((await menuHrefs()).includes('#/quote'), '会计账号菜单含商品估价试算');
   await gotoHash('#/quote');
-  check((await bodyText()).includes('估价试算'), '会计可打开估价试算嵌入页');
+  check((await bodyText()).includes('估价试算'), '会计可打开商品估价试算嵌入页');
   await page.evaluate(() => DB.clearSession());
   await login('sales', '123456');
-  check((await menuHrefs()).includes('#/quote'), '业务账号菜单含估价试算');
+  check((await menuHrefs()).includes('#/quote'), '业务账号菜单含商品估价试算');
   await gotoHash('#/quote');
-  check((await bodyText()).includes('估价试算'), '业务可打开估价试算嵌入页');
+  check((await bodyText()).includes('估价试算'), '业务可打开商品估价试算嵌入页');
 
   // ========== 6. 仓管无权限（不可见 + 直连被拒） ==========
   console.log('\n[6] 仓管角色拒绝');
   await page.evaluate(() => DB.clearSession());
   await login('warehouse', '123456');
-  check(!(await menuHrefs()).includes('#/quote'), '仓管账号菜单不含估价试算');
+  check(!(await menuHrefs()).includes('#/quote'), '仓管账号菜单不含商品估价试算');
   await gotoHash('#/quote');
   const deniedToast = await toastText();
   check(deniedToast.includes('没有访问该页面的权限'), `无权限访问被拒（toast：${deniedToast.slice(0, 40)}）`);

@@ -197,11 +197,11 @@ const MENU = [
         ]
     },
     {
-        group: "账款财务", key: "finance", items: [
+        group: "进销存账款/财务", key: "finance", items: [
             { code: "accounts_receivable", label: "进销存应收账款", hash: "#/accounting/accounts-receivable", perm: "finance.ar" },
             { code: "accounts_payable", label: "进销存应付账款", hash: "#/accounting/accounts-payable", perm: "finance.ap" },
-            { code: "finance.bookkeeping", label: "财会记账", hash: "#/bookkeeping", perm: "finance.bookkeeping" },
-            { code: "finance.quote", label: "估价试算", hash: "#/quote", perm: "finance.quote" }
+            { code: "finance.bookkeeping", label: "财务会记", hash: "#/bookkeeping", perm: "finance.bookkeeping" },
+            { code: "finance.quote", label: "商品估价试算", hash: "#/quote", perm: "finance.quote" }
         ]
     },
     {
