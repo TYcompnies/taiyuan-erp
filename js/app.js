@@ -182,18 +182,26 @@ const MENU = [
         ]
     },
     {
-        group: "日常作业", key: "daily", items: [
-            { code: "sales_orders", label: "销货订单", hash: "#/sales-orders", perm: "sales.view" },
-            { code: "shipments", label: "出货单", hash: "#/shipments", perm: "shipment.view" },
-            { code: "purchase_orders", label: "采购单", hash: "#/purchase-orders", perm: "purchase.view" },
-            { code: "inventory_adjust", label: "库存调整", hash: "#/inventory/inventory_adjust", perm: "inventory.view" },
-            { code: "sales_returns", label: "销货退回/折让", hash: "#/sales-returns", perm: "sales_return.view" },
-            { code: "purchase_returns", label: "采购退回/折让", hash: "#/purchase-returns", perm: "purchase_return.view" }
+        group: "基本资料", key: "master", items: [
+            { code: "items", label: "商品主档", hash: "#/master/items", perm: "master.item" },
+            { code: "customers", label: "客户主档", hash: "#/master/customers", perm: "master.customer" },
+            { code: "suppliers", label: "供应商主档", hash: "#/master/suppliers", perm: "master.supplier" },
+            { code: "warehouses", label: "仓库主档", hash: "#/master/warehouses", perm: "master.warehouse" },
+            { code: "units", label: "单位管理", hash: "#/master/units", perm: "master.basic" },
+            { code: "currencies", label: "币别管理", hash: "#/master/currencies", perm: "master.basic" },
+            { code: "categories", label: "商品分类", hash: "#/master/categories", perm: "master.basic" },
+            { code: "shipping_methods", label: "物流方式", hash: "#/master/shipping_methods", perm: "master.basic" },
+            { code: "payment_terms", label: "付款条件", hash: "#/master/payment_terms", perm: "master.basic" }
         ]
     },
     {
-        group: "出勤管理", key: "attendance", items: [
-            { code: "attendance", label: "出勤管理", hash: "#/attendance", perm: "attendance.view" }
+        group: "日常作业", key: "daily", items: [
+            { code: "purchase_orders", label: "采购单", hash: "#/purchase-orders", perm: "purchase.view" },
+            { code: "sales_orders", label: "销货订单", hash: "#/sales-orders", perm: "sales.view" },
+            { code: "shipments", label: "出货单", hash: "#/shipments", perm: "shipment.view" },
+            { code: "purchase_returns", label: "采购退回/折让", hash: "#/purchase-returns", perm: "purchase_return.view" },
+            { code: "sales_returns", label: "销货退回/折让", hash: "#/sales-returns", perm: "sales_return.view" },
+            { code: "inventory_adjust", label: "库存调整", hash: "#/inventory/inventory_adjust", perm: "inventory.view" }
         ]
     },
     {
@@ -213,23 +221,15 @@ const MENU = [
         ]
     },
     {
-        group: "基本资料", key: "master", items: [
-            { code: "items", label: "商品主档", hash: "#/master/items", perm: "master.item" },
-            { code: "customers", label: "客户主档", hash: "#/master/customers", perm: "master.customer" },
-            { code: "suppliers", label: "供应商主档", hash: "#/master/suppliers", perm: "master.supplier" },
-            { code: "warehouses", label: "仓库主档", hash: "#/master/warehouses", perm: "master.warehouse" },
-            { code: "units", label: "单位管理", hash: "#/master/units", perm: "master.basic" },
-            { code: "currencies", label: "币别管理", hash: "#/master/currencies", perm: "master.basic" },
-            { code: "categories", label: "商品分类", hash: "#/master/categories", perm: "master.basic" },
-            { code: "shipping_methods", label: "物流方式", hash: "#/master/shipping_methods", perm: "master.basic" },
-            { code: "payment_terms", label: "付款条件", hash: "#/master/payment_terms", perm: "master.basic" }
-        ]
-    },
-    {
         group: "报表查询", key: "reports", items: [
             { code: "inventory_overview", label: "进销存库存总览", hash: "#/inventory/inventory_overview", perm: "report.inventory" },
             { code: "inventory_safety", label: "进销存安全库存", hash: "#/inventory/inventory_safety", perm: "report.safety" },
             { code: "profit_report", label: "进销存损益报表", hash: "#/report/profit", perm: "report.profit" }
+        ]
+    },
+    {
+        group: "出勤管理", key: "attendance", items: [
+            { code: "attendance", label: "出勤管理", hash: "#/attendance", perm: "attendance.view" }
         ]
     },
     {
