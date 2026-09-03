@@ -1048,6 +1048,19 @@ Pages.purchaseOrderForm = function (id) {
             <div><span>进货状态</span><strong>${isEdit ? (o.status === "received" ? "已进货" : "未进货") : "未进货"}</strong></div>
             <div><span>采购金额</span><strong id="poTotal">${fmt(goodsTotal)}</strong></div>
         </div>
+
+        <div class="doc-flow-card editable">
+            <div>
+                <span class="doc-flow-label">目前流程</span>
+                <strong>${isEdit && o.status === "received" ? "已进货，仍可编辑明细，保存后自动同步库存与应付" : "未进货，可调整明细并执行进货入库"}</strong>
+                <p>${isEdit && o.status === "received" ? "修改数量、单价、明细或入库仓库后保存，系统会按新旧明细差异自动增减库存，并重算应付金额与付款状态；已付金额与付款记录保留不变。" : "保存后可在采购单列表点「进货入库」，系统会增加库存并形成应付账款。"}</p>
+            </div>
+            <ul>
+                <li>已进货采购单保存后仍可再编辑，系统自动同步资料，不需删除重建。</li>
+                <li>已发生退回/折让的商品，新数量不得少于累计退回量；采购金额不得低于已冲减应付的合计。</li>
+            </ul>
+        </div>
+
         <section class="form-section">
             <div class="form-section-title"><h3>采购信息</h3></div>
             <div class="form-grid section-grid">
@@ -1063,8 +1076,8 @@ Pages.purchaseOrderForm = function (id) {
         </section>
         <section class="form-section">
             <div class="bom-lines-head">
-                <div><h3>采购明细</h3></div>
-                ${!(isEdit && o.status === "received") ? `<button class="btn" type="button" onclick="Pages.addPOLine()">+ 新增明细</button>` : ""}
+                <div><h3>采购明细</h3>${isEdit && o.status === "received" ? `<p class="muted">已进货采购单仍可新增/移除明细行，保存后自动同步库存与应付。</p>` : ""}</div>
+                <button class="btn" type="button" onclick="Pages.addPOLine()">+ 新增明细</button>
             </div>
             <div class="table-wrap detail-scroll">
                 <table class="table bom-lines" id="poLines">
@@ -1076,7 +1089,7 @@ Pages.purchaseOrderForm = function (id) {
         </section>
         <div class="form-item wide" style="margin-top:16px"><label>备注</label><textarea name="remark">${h(o ? o.remark : "")}</textarea></div>
         <div class="form-actions sticky-actions">
-            ${!(isEdit && o.status === "received") ? `<button class="btn primary" type="submit">保存采购单</button>` : ""}
+            <button class="btn primary" type="submit">${isEdit && o.status === "received" ? "保存并同步库存/应付" : "保存采购单"}</button>
             <a class="btn" href="#/purchase-orders">返回</a>
         </div>
     </form>`;
@@ -1181,11 +1194,6 @@ Pages.savePO = function (e, id) {
     if (window.__saveLock) { toast("正在保存，请稍候…", "error"); return; }
     window.__saveLock = true;
     try {
-    // 状态守卫：已进货采购单锁定，任何途径（含回车提交）都不可再改
-    if (id) {
-        const old = DB.get("purchase_orders", id);
-        if (old && old.status !== "draft") { toast("该采购单已进货，内容已锁定，无法修改", "error"); return; }
-    }
     const fd = new FormData(e.target);
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
@@ -1209,15 +1217,70 @@ Pages.savePO = function (e, id) {
     if (!data.warehouse_id) { toast("请选择入库仓库", "error"); return; }
     const amount = lines.reduce((s, l) => s + l.amount, 0);
 
+    const old = id ? DB.get("purchase_orders", id) : null;
+    const isReceivedEdit = !!(old && old.status === "received");
+    if (isReceivedEdit) {
+        // —— 已进货采购单再编辑守卫（不破坏已发生的退回/折让与付款记录）——
+        const priorPRs = DB.filter("purchase_returns", r => r.purchase_order_id === old.id);
+        // 仓库守卫：已发生库存退回的单不可变更入库仓库（避免整单回冲扣错仓位）
+        if (data.warehouse_id && data.warehouse_id !== old.warehouse_id &&
+            priorPRs.some(r => r.type === "退回")) {
+            toast("该采购单已发生库存退回，入库仓库不可变更，请先处理退回记录", "error");
+            return;
+        }
+        // 数量守卫：新单各商品数量不得少于已退回/折让累计数量
+        const retQty = {}, newQty = {};
+        priorPRs.forEach(r => (r.lines || []).forEach(x => {
+            const k = x.item_id || ("c:" + (x.code || ""));
+            retQty[k] = Utils.num(retQty[k]) + Utils.num(x.qty);
+        }));
+        lines.forEach(l => { const k = l.item_id || ("c:" + (l.code || "")); newQty[k] = Utils.num(newQty[k]) + Utils.num(l.qty); });
+        const badK = Object.keys(retQty).find(k => Utils.num(retQty[k]) > Utils.num(newQty[k]) + 0.0001);
+        if (badK) {
+            const it = badK.indexOf("c:") === 0 ? null : DB.get("items", badK);
+            const code = it ? it.code : (badK.indexOf("c:") === 0 ? badK.slice(2) : badK);
+            toast(`商品 ${code} 已退回/折让 ${Utils.num(retQty[badK])}，新数量不得少于累计退回量`, "error");
+            return;
+        }
+        // 金额守卫：新采购金额不得低于已冲减应付的退回/折让合计
+        const offsetAmt = priorPRs.filter(r => r.offset_payable).reduce((s, r) => s + Utils.num(r.amount), 0);
+        if (Utils.num(amount) + 0.0001 < offsetAmt) {
+            toast(`采购金额 ${fmt(amount)} 低于已冲减应付的退回/折让合计 ${fmt(offsetAmt)}，无法保存`, "error");
+            return;
+        }
+    }
+
     const payload = {
-        no: id ? DB.get("purchase_orders", id).no : nextDocNo("PO", "purchase_orders", data.po_date),
+        no: old ? old.no : nextDocNo("PO", "purchase_orders", data.po_date),
         supplier_id: data.supplier_id, po_date: data.po_date, delivery_date: data.delivery_date || "",
-        currency: data.currency, payment_method: data.payment_method, status: data.status || "draft",
-        warehouse_id: data.warehouse_id, amount, paid_amount: id ? DB.get("purchase_orders", id).paid_amount : 0,
-        lines, remark: data.remark || "", created_by: DB.currentUser().name
+        currency: data.currency, payment_method: data.payment_method, status: old ? old.status : "draft",
+        warehouse_id: data.warehouse_id, amount, paid_amount: old ? Utils.num(old.paid_amount) : 0,
+        lines, remark: data.remark || "", created_by: old ? old.created_by : DB.currentUser().name
     };
 
-    if (id) {
+    if (isReceivedEdit) {
+        // —— 库存差量同步：先整体回冲旧单已入库库存，再按新明细重新入库（跨仓库自动迁移）——
+        const stock = DB.stockMap();
+        const rateOf = it => (it && Utils.num(it.purchase_to_stock) > 0 ? Utils.num(it.purchase_to_stock) : 1);
+        (old.lines || []).forEach(l => {
+            const it = DB.get("items", l.item_id);
+            if (!stock[old.warehouse_id]) stock[old.warehouse_id] = {};
+            stock[old.warehouse_id][l.item_id] = Utils.round(Utils.num(stock[old.warehouse_id][l.item_id]) - Utils.num(l.qty) * rateOf(it), 4);
+        });
+        lines.forEach(l => {
+            const it = DB.get("items", l.item_id);
+            if (!stock[data.warehouse_id]) stock[data.warehouse_id] = {};
+            stock[data.warehouse_id][l.item_id] = Utils.round(Utils.num(stock[data.warehouse_id][l.item_id]) + Utils.num(l.qty) * rateOf(it), 4);
+        });
+        // 应付状态重算（已付金额保留不归零，折让/退回冲减纳入）
+        const priorPRs = DB.filter("purchase_returns", r => r.purchase_order_id === old.id);
+        const offsets = priorPRs.filter(r => r.offset_payable).reduce((s, r) => s + Utils.num(r.amount), 0);
+        const outstanding = Math.max(Utils.num(amount) - Utils.num(old.paid_amount) - offsets, 0);
+        payload.payment_status = outstanding <= 0.001 ? "paid" : (Utils.num(old.paid_amount) > 0 ? "partial" : "unpaid");
+        DB.update("purchase_orders", id, payload);
+        DB.flush();
+        toast("采购单已更新：库存与应付账款已同步", "success");
+    } else if (id) {
         DB.update("purchase_orders", id, payload);
         toast("采购单已更新", "success");
     } else {
