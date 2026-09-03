@@ -16,6 +16,7 @@ const CloudSync = {
     BACKUP_KEY: "taiyuan_erp_backups_v1",
     DEVICE_KEY: "taiyuan_device_id_v1",
     MANUAL_KEY: "taiyuan_sync_manual_v1", // 用户手动保存过同步配置（自动修复逻辑不再干预）
+    UNIFY_KEY: "taiyuan_sync_unified_v2", // 已完成一次性统一收敛（此后手动保存的配置不再被自动干预）
     MAX_TEXTDB_BYTES: 28000,   // textdb URL 安全上限（编码后字符数）
     BACKUP_KEEP: 5,
     PULL_INTERVAL: 12000,
@@ -701,18 +702,30 @@ const CloudSync = {
             if (!isDevHost || forceSync) this.migrateLegacyCfg();
         }
         if (this._started) return;
-        // 从未保存过任何同步配置，或保存过但配置不可用（旧版本残留空同步码 / 网域切换后配置分裂），
-        // 且用户未手动自定义 → 自动启用内置默认配置，确保不同设备/浏览器/网域都指向同一数据空间
+        // 一次性统一收敛（不同网域·不同 IP·不同装置零设定自动同步，无需手动输入同步码）：
+        // 从未保存过任何同步配置、保存过但配置不可用（空同步码等）、或旧设备曾手动保存过
+        // 其他同步空间（历史上手动输入过同步码）→ 全部自动接入内置统一同步空间。
+        // 收敛仅执行一次（UNIFY_KEY 标记），之后用户在「云端同步」页手动保存的配置不再被干预。
         if ((!isDevHost || forceSync) && this.DEFAULT_SYNC_CFG) {
             const c0 = this.loadCfg();
             const neverSaved = !localStorage.getItem(this.CFG_KEY);
             const manual = localStorage.getItem(this.MANUAL_KEY) || localStorage.getItem("taiyuan_sync_gh_choice");
+            const unifiedCode = (this.DEFAULT_SYNC_CFG.code || "").trim();
+            const sameSpace = c0.provider === "textdb" && unifiedCode && (c0.code || "").trim() === unifiedCode;
             const broken = (c0.provider === "textdb" && !c0.code) || (c0.provider === "github" && (!c0.ghToken || !c0.ghRepo));
-            if (neverSaved || (!manual && broken)) {
+            const converged = localStorage.getItem(this.UNIFY_KEY);
+            if (neverSaved || (!manual && broken) || (!converged && !sameSpace)) {
                 const keep = c0.ghToken ? { ghToken: c0.ghToken } : {};
                 this.saveCfg(Object.assign({}, this.DEFAULT_SYNC_CFG, keep));
-                this.setStatus({ lastAction: neverSaved ? "已自动启用内置云同步配置" : "检测到同步配置不可用，已自动恢复统一数据空间（textdb）", lastError: "" });
-                if (typeof toast === "function") toast(neverSaved ? "🔄 已自动启用跨设备云同步" : "🔄 检测到同步配置不可用，已自动恢复统一数据空间", "success");
+                localStorage.setItem(this.UNIFY_KEY, "1");
+                const msg = neverSaved ? "🔄 已自动启用跨设备云同步"
+                    : (manual && !broken && !sameSpace) ? "🔄 已自动接入统一同步空间（无需手动输入同步码）"
+                    : "🔄 检测到同步配置不可用，已自动恢复统一数据空间";
+                this.setStatus({ lastAction: msg.replace(/^[🔄 ]+/, ""), lastError: "" });
+                if (typeof toast === "function") toast(msg, "success");
+            } else if (!converged) {
+                // 已在统一同步空间：仅补收敛标记（此后手动保存的配置将完全受尊重）
+                localStorage.setItem(this.UNIFY_KEY, "1");
             }
         }
         const c = this.loadCfg();
@@ -755,17 +768,18 @@ Pages.cloudSync = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>云端同步</h1><p>跨设备、跨网络共用同一份 ERP 数据：本机变更自动上传云端，其他设备打开或切回窗口时自动下载最新版本；覆盖前自动备份，原有资料不丢失。</p></div>
+        <div><h1>云端同步</h1><p>跨设备、跨网络共用同一份 ERP 数据：本机变更自动上传云端，其他设备打开或切回窗口时自动下载最新版本；覆盖前自动备份，原有资料不丢失。不同网域、不同 IP、不同装置打开即自动接入统一同步空间，<b>无需手动输入同步码</b>。</p></div>
         <div class="head-actions">
+            <button class="btn" onclick="Pages.syncUseUnified()">🔄 接入统一同步空间</button>
             <button class="btn" onclick="Pages.syncTest()">🔗 测试连接</button>
             <button class="btn" onclick="Pages.syncPushNow()">☁️ 立即上传</button>
             <button class="btn primary" onclick="Pages.syncPullNow()">⬇️ 立即下载</button>
         </div>
     </div>
 
-    ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 12 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备、不同浏览器、不同网域/不同网络 IP 打开本系统即自动同步，无需再手动点上传或下载。检测到旧版同步配置时自动切换到统一数据源，避免设备间数据分裂；textdb 主源不可达时自动从 GitHub 备用源读取。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 填写下方同步码（或 GitHub 令牌）并保存后，将自动开启实时跨设备同步。</div>` : "")}
+    ${c.autoPush && c.autoPull && CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#ecfdf5;color:#047857;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><b>实时自动同步已开启</b>：数据变动 3 秒后自动上传；每 12 秒检查云端、切回窗口/标签时即时拉取；同浏览器多标签页即时同步。<br><span style="opacity:.8">不同设备、不同浏览器、不同网域/不同网络 IP 打开本系统即自动同步，无需再手动点上传或下载。检测到旧版同步配置时自动切换到统一数据源，避免设备间数据分裂；textdb 主源不可达时自动从 GitHub 备用源读取。</span></div></div>` : (!CloudSync.isConfigured() ? `<div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#fff7e6;color:#92600a;font-size:13.5px">💡 非本地开发环境打开本系统会自动接入统一同步空间（无需填写同步码）；本地开发可点右上「🔄 接入统一同步空间」或手动填写下方同步码。</div>` : "")}
 
-    <div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">📡</span><div><b>同步空间：${spaceTag}</b> &nbsp;·&nbsp; 通道：${chTag}<br><span style="opacity:.85">所有设备/网域必须指向同一「同步空间」才会联动。手机与电脑不同步时，请先核对两端此处空间标识是否一致。textdb 主通道不可达时自动切换 GitHub 备用通道；读取时双源对账取较新版本。</span></div></div>
+    <div style="margin-bottom:16px;padding:12px 16px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:13.5px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">📡</span><div><b>同步空间：${spaceTag}</b> &nbsp;·&nbsp; 通道：${chTag}<br><span style="opacity:.85">所有设备/网域必须指向同一「同步空间」才会联动。新装置、新网域、新网络 IP 首次打开本系统即<b>自动接入此统一同步空间</b>，无需手动输入同步码；本页手动保存过的旧配置也会在升级后自动收敛一次。textdb 主通道不可达时自动切换 GitHub 备用通道；读取时双源对账取较新版本。</span></div></div>
 
     <div class="kpi-grid">
         <div class="kpi-card"><span>同步状态</span><strong style="font-size:16px">${c.pass ? "已加密" : "未加密"} ${providerBadge}</strong></div>
@@ -802,7 +816,7 @@ Pages.cloudSync = function () {
                         <button type="button" class="btn" onclick="Pages.syncGenCode()">生成随机码</button>
                     </div></div>
             </div>
-            <p class="muted">同一同步码在任意网络 IP 打开本系统并登录后，会自动下载该同步码的最新数据；数据量超出限制（约 100KB 原始数据）时请改用 GitHub。若 textdb 暂时无法访问，系统会自动从 GitHub 备用源读取（需仓库内存在 erp-sync.json 备份）。</p>
+            <p class="muted">下方同步码已预填统一同步空间：不同网域/不同 IP/不同装置打开本系统即自动接入同一空间共用数据，<b>无需手动输入或修改</b>（仅当需要切换到独立私有空间时才更改）。同一同步码在任意网络 IP 打开本系统并登录后，会自动下载该同步码的最新数据；数据量超出限制（约 100KB 原始数据）时请改用 GitHub。若 textdb 暂时无法访问，系统会自动从 GitHub 备用源读取（需仓库内存在 erp-sync.json 备份）。</p>
         </section>
 
         <section class="form-section">
@@ -901,6 +915,20 @@ Pages.syncGenCode = function () {
     const inp = document.querySelector('input[name="code"]');
     if (inp) inp.value = code;
     toast("已生成同步码，保存后请在其他设备填写同一同步码", "success");
+};
+
+// 手动接入内置统一同步空间：把当前设备切回与其他所有设备/网域共用的默认空间
+// （保留已填的 GitHub 令牌用于双写备份；切换前本地数据仍受备份与 LWW 保护）
+Pages.syncUseUnified = function () {
+    if (!CloudSync.DEFAULT_SYNC_CFG) { toast("当前版本未内置统一同步空间", "error"); return; }
+    const c0 = CloudSync.loadCfg();
+    const keep = c0.ghToken ? { ghToken: c0.ghToken } : {};
+    CloudSync.saveCfg(Object.assign({}, CloudSync.DEFAULT_SYNC_CFG, keep));
+    localStorage.setItem(CloudSync.UNIFY_KEY, "1");
+    CloudSync._started = false;
+    CloudSync.startAuto();
+    toast("已接入统一同步空间：与其他设备/网域共用同一份数据", "success");
+    render();
 };
 
 Pages.syncPushNow = async function () {
