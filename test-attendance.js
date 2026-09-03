@@ -50,7 +50,7 @@ async function getFrame(page) {
 (async () => {
     const browser = await chromium.launch({ channel: 'msedge', headless: true });
     const page = await browser.newPage();
-    await page.context().route(/textdb\.online|github|githubusercontent/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
+    await page.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
 
     // ===== 1. 出勤菜单可见 =====
     await test('出勤菜单在侧边栏可见', async () => {
@@ -152,7 +152,7 @@ async function getFrame(page) {
     // ===== 9. 出勤系统独立访问正常 =====
     await test('出勤系统独立访问正常（非 iframe）', async () => {
         const page2 = await browser.newPage();
-        await page2.context().route(/textdb\.online|github|githubusercontent/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
+        await page2.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
         await page2.goto(BASE + '/attendance/index.html');
         await page2.waitForSelector('.login-card', { timeout: 8000 });
         const title = await page2.title();

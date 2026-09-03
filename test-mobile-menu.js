@@ -48,7 +48,7 @@ async function menuState(page) {
     // ============ 移动端（390x844 手机视口） ============
     console.log("\n── 移动端（390x844）──");
     const mctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
-    await mctx.route(/textdb\.online|github|githubusercontent/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
+    await mctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
     const mp = await mctx.newPage();
     await login(mp);
 
@@ -93,7 +93,7 @@ async function menuState(page) {
     // ============ 桌面端（1280x800） ============
     console.log("\n── 桌面端（1280x800）──");
     const dctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    await dctx.route(/textdb\.online|github|githubusercontent/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
+    await dctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
     const dp = await dctx.newPage();
     await login(dp);
     st = await menuState(dp);

@@ -20,7 +20,7 @@ async function test(name, fn) {
 }
 async function login(page) {
     // 拦截云同步域名（textdb/GitHub），防 reload 后 startAuto 拉生产云覆盖注入的旧快照/登出
-    await page.context().route(/textdb\.online|github|githubusercontent/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
+    await page.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
     await page.goto(BASE);
     await page.evaluate(() => { localStorage.clear(); });
     await page.goto(BASE);
