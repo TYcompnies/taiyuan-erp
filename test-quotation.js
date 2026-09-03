@@ -1,5 +1,5 @@
 // 估价试算（外挂跨境成本利润试算嵌入页）自动化测试
-// 覆盖：进销存账款/财务→商品估价试算 菜单/路由/iframe 嵌入、URL 正确、
+// 覆盖：商品估价试算独立组（不跟进销存账款） 菜单/路由/iframe 嵌入、URL 正确、
 //       权限种子（管理员/管理者/业务/会计有、仓管无）、migrateQuote 迁移
 //       （判据 sales.view 或 finance.bookkeeping，幂等）、无权限拒绝
 // 运行前提：本地服务器 http://127.0.0.1:8904（cd erp-clone && node serve.js 8904 .）
@@ -65,20 +65,23 @@ function check(cond, msg) {
   await login('admin', 'admin123');
   check((await bodyText()).includes('仪表板'), '管理员登录成功');
 
-  // ========== 2. 菜单含商品估价试算 ==========
-  console.log('\n[2] 进销存账款/财务菜单');
+  // ========== 2. 菜单独立组（商品估价试算 不跟 进销存账款 同组） ==========
+  console.log('\n[2] 商品估价试算独立菜单组');
   const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.sidebar a')).map(a => ({ t: a.textContent.trim(), href: a.getAttribute('href') })));
   const qtItem = menu.find(m => m.href === '#/quote');
   check(!!qtItem && qtItem.t.includes('商品估价试算'), '侧边栏菜单含「商品估价试算」(#/quote)');
-  const inGroup = await page.evaluate(() => {
-    const g = Array.from(document.querySelectorAll('.menu-group')).find(grp => {
-      const sp = grp.querySelector('.menu-main span');
-      return sp && sp.textContent.trim() === '进销存账款/财务';
-    });
-    return g ? Array.from(g.querySelectorAll('.menu-link')).map(a => a.textContent.trim()) : [];
-  });
-  check(inGroup.includes('商品估价试算'), '「商品估价试算」位于进销存账款/财务菜单组');
-  check(inGroup.indexOf('财务会记') < inGroup.indexOf('商品估价试算'), '「商品估价试算」排在「财务会记」之后');
+  const groups = await page.evaluate(() => Array.from(document.querySelectorAll('.menu-group')).map(grp => {
+    const sp = grp.querySelector('.menu-main span');
+    return {
+      title: sp ? sp.textContent.trim() : '',
+      links: Array.from(grp.querySelectorAll('.menu-link')).map(a => a.textContent.trim())
+    };
+  }));
+  const qtGrp = groups.find(g => g.title === '商品估价试算');
+  check(!!qtGrp && qtGrp.links.includes('商品估价试算'), '「商品估价试算」独立成组（组标题=菜单名）');
+  const finGrp = groups.find(g => g.title === '进销存账款');
+  check(!!finGrp && !finGrp.links.includes('商品估价试算'), '「商品估价试算」不跟在「进销存账款」组内');
+  check(groups.findIndex(g => g.title === '财务会计') < groups.findIndex(g => g.title === '商品估价试算'), '「财务会计」组排在「商品估价试算」组之前');
 
   // ========== 3. 页面渲染（iframe 嵌入） ==========
   console.log('\n[3] 商品估价试算嵌入页');
@@ -102,7 +105,7 @@ function check(cond, msg) {
   check(frame.title && frame.title.includes('商品估价试算'), 'iframe title 正确');
   check(frame.toolbar.includes('商品估价试算'), '工具栏标题含「商品估价试算」');
   check(frame.desc.includes('EXW/FOB'), '工具栏说明含 EXW/FOB 出口估价描述');
-  check(frame.crumb.includes('商品估价试算') && frame.crumb.includes('进销存账款/财务'), '面包屑「首页 / 进销存账款/财务 / 商品估价试算」');
+  check(frame.crumb.includes('商品估价试算') && !frame.crumb.includes('进销存账款'), '面包屑「首页 / 商品估价试算」（不含进销存账款组）');
   check(frame.openHref === QT_URL && frame.openTarget === '_blank', '「新窗口打开」按钮指向同一网址且 target=_blank');
 
   // ========== 4. 角色种子权限 ==========

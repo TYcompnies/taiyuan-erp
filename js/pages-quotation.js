@@ -27,5 +27,5 @@ Pages.quotationPage = function () {
                 referrerpolicy="no-referrer-when-downgrade" allow="clipboard-write"></iframe>
         </div>
     </div>`;
-    renderShell("finance.quote", html, "首页 / 进销存账款/财务 / 商品估价试算");
+    renderShell("finance.quote", html, "首页 / 商品估价试算");
 };

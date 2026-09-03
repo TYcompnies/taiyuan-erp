@@ -84,8 +84,8 @@ const BASE = process.env.BASE || 'http://127.0.0.1:8902';
   check(t2.includes('库存'), '库存总览页渲染');
   await page.screenshot({ path: shots + '/06-inventory.png', fullPage: true });
 
-  // 8. 应收账款（进销存账款/财务组）
-  await navTo('进销存账款/财务', '应收账款');
+  // 8. 应收账款（进销存账款组）
+  await navTo('进销存账款', '应收账款');
   t2 = await page.textContent('body');
   check(t2.includes('应收账款') && t2.includes('收款'), '应收账款页渲染');
   await page.screenshot({ path: shots + '/07-ar.png', fullPage: true });
