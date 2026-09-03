@@ -13,6 +13,11 @@ const { chromium } = require('playwright');
 
   await page.goto(URL, { waitUntil: 'networkidle', timeout: 60000 });
   await page.waitForTimeout(800);
+  // 禁用自动同步（不读写生产云数据；测试数据本地自注入，云端业务数据清空后仍可稳定验证）
+  await page.evaluate(() => {
+    if (typeof CloudSync !== 'undefined') CloudSync.DEFAULT_SYNC_CFG = null;
+    localStorage.removeItem('taiyuan_sync_cfg_v1');
+  });
   const inputs = page.locator('input');
   const n = await inputs.count();
   for (let i = 0; i < n; i++) {
@@ -22,6 +27,27 @@ const { chromium } = require('playwright');
   }
   await page.locator('button:has-text("登录")').first().click();
   await page.waitForTimeout(1500);
+
+  // 自注入打印验证数据（客户/商品/已出货销货订单/出货单）
+  await page.evaluate(() => {
+    const today = Utils.today();
+    DB.insert('customers', { id: 'cu_lp', code: 'CULP', name: '打印测试客户', phone: '13800000000', address: '广东省深圳市测试路1号', currency: 'CNY' });
+    DB.insert('items', { id: 'it_lp', code: 'LP001', name: '打印测试商品', spec: '规格A', stock_unit: '个', sales_unit: '个', purchase_unit: '个', sales_to_stock: 1, purchase_to_stock: 1, cost: 30, purchase_currency: 'CNY', active: true });
+    DB.insert('sales_orders', {
+      id: 'so_lp', no: 'SO_LP_001', status: 'shipped', customer_id: 'cu_lp', channel: '线下', platform_no: '',
+      order_date: today, delivery_date: today, sales_owner: 'admin', logistics_method: '圆通速递',
+      shipping_fee: 0, platform_fee: 0, payment_fee: 0, other_fee: 0, taxable_amount: 100, tax_amount: 0,
+      net_receipt: 100, invoice_amount: 100, payment_status: 'unpaid',
+      lines: [{ item_id: 'it_lp', code: 'LP001', name: '打印测试商品', qty: 2, unit: '个', unit_price: 50, amount: 100 }]
+    });
+    DB.insert('shipments', {
+      id: 'sh_lp', no: 'SH_LP_001', sales_order_id: 'so_lp', order_no: 'SO_LP_001', ship_date: today,
+      warehouse_id: 'wh1', recipient_name: '打印测试客户', recipient_phone: '13800000000',
+      shipping_address: '广东省深圳市测试路1号', logistics_method: '圆通速递', shipment_no: 'SF123456',
+      created_by: 'admin',
+      lines: [{ item_id: 'it_lp', code: 'LP001', name: '打印测试商品', qty: 2, unit: '个', unit_price: 50, amount: 100 }]
+    });
+  });
 
   // 展开日常作业菜单
   const g = page.locator('.menu-main').filter({ hasText: '日常作业' });
