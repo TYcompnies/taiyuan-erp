@@ -320,16 +320,20 @@ function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
   check(collEmpty, 'vouchers/expenses/chart_accounts 集合均为空');
 
   // ========== 11. 删除保护 ==========
-  console.log('\n[11] 删除保护：仓库有库存禁删、币别被引用禁删、客户被引用禁删、空仓库可删');
-  // 说明：deleteMaster 引用检查在确认弹窗之前直接 toast 拒绝，因此点删除后直接断言 toast
-  // 仓库 wh1 有库存 → 禁删
+  console.log('\n[11] 删除保护：仓库不受限删除（含库存）、币别被引用禁删、客户被引用禁删');
+  // 说明：供应商/仓库主档已按用户要求不受任何引用环扣限制（2026-09-03），
+  //       币别/客户仍保留引用检查——被引用时 toast 拒绝
+  // 仓库：有库存也可直接删除（点删除→确认→删除，顺带清掉其库存记录）
+  await db(() => DB.insert('warehouses', { id: 'wh_tmp2', code: 'WHTMP2', name: '临时有货仓库', contact: '', phone: '', address: '', remark: '', created_at: Utils.now(), updated_at: Utils.now() }));
+  await db(() => { const it = DB.list('items')[0]; if (it) DB.addStock('wh_tmp2', it.id, 5); });
   await gotoHash('#/master/warehouses');
-  await page.locator(`tr:has-text("WH001") button:has-text("删除")`).click();
-  await page.waitForTimeout(400);
-  const whToast = await toastText();
-  check(whToast.includes('已被引用') || whToast.includes('无法删除'), `有库存仓库删除被拒 (${whToast || '无提示'})`);
-  const whStill = await db(() => DB.list('warehouses').some(w => w.id === 'wh1'));
-  check(whStill, 'wh1 仓库仍存在');
+  await page.locator(`tr:has-text("WHTMP2") button:has-text("删除")`).click();
+  await page.waitForTimeout(300);
+  await confirmOk();
+  const wh2Gone = await db(() => !DB.list('warehouses').some(w => w.id === 'wh_tmp2'));
+  check(wh2Gone, '有库存仓库不受环扣限制可删除');
+  const wh2StockGone = await db(() => !DB.stockMap()['wh_tmp2']);
+  check(wh2StockGone, '仓库删除后其库存记录一并清除');
 
   // 币别 USD 被订单引用 → 禁删
   await gotoHash('#/master/currencies');

@@ -68,15 +68,10 @@ Pages.itemSearch = function (v) {
 Pages.deleteItem = function (id) {
     const it = DB.get("items", id);
     if (!it) return;
-    // 引用检查：被任何单据明细引用时拒绝删除，避免孤儿引用
-    const refLabels = {
-        sales_orders: "销货订单", purchase_orders: "采购单", shipments: "出货单",
-        inventory_adjusts: "库存调整单", sales_returns: "销货退回单", purchase_returns: "采购退回单"
-    };
-    const refColl = Object.keys(refLabels).find(c => DB.find(c, x => (x.lines || []).some(l => l.item_id === id)));
-    if (refColl) { toast(`该商品已被${refLabels[refColl]}引用，无法删除；建议改为停用`, "error"); return; }
-    if (DB.totalStock(id) !== 0) { toast("该商品仍有库存，无法删除；建议改为停用", "error"); return; }
+    // 不受任何引用/库存环扣限制，点删除即删；顺带清掉该商品在各仓库的库存记录
     confirmModal(`确定要删除商品 ${it.code} - ${it.name} 吗？`, () => {
+        const sm = DB.stockMap();
+        Object.keys(sm).forEach(wh => { delete sm[wh][id]; });
         DB.remove("items", id);
         toast("商品已删除", "success");
         render();
@@ -510,18 +505,19 @@ Pages.saveWarehouse = function (e, id) {
 Pages.deleteMaster = function (coll, id, label) {
     const r = DB.get(coll, id);
     if (!r) return;
-    // 引用检查：被单据/商品引用时拒绝删除
+    // 供应商/仓库主档：不受任何引用环扣限制，点删除即删（仓库顺带清掉其库存记录）
+    if (coll === "suppliers" || coll === "warehouses") {
+        confirmModal(`确定要删除这笔${label}资料吗？此操作不可恢复。`, () => {
+            if (coll === "warehouses") delete DB.stockMap()[id];
+            DB.remove(coll, id);
+            toast(label + "已删除", "success");
+            render();
+        });
+        return;
+    }
+    // 其余主档：引用检查，被单据/商品引用时拒绝删除
     let ref = null;
     if (coll === "customers") ref = DB.find("sales_orders", x => x.customer_id === id) || DB.find("sales_returns", x => x.customer_id === id);
-    else if (coll === "suppliers") ref = DB.find("purchase_orders", x => x.supplier_id === id) || DB.find("purchase_returns", x => x.supplier_id === id);
-    else if (coll === "warehouses") {
-        ref = DB.find("shipments", x => x.warehouse_id === id) || DB.find("purchase_orders", x => x.warehouse_id === id) || DB.find("inventory_adjusts", x => x.warehouse_id === id) || DB.find("sales_returns", x => x.warehouse_id === id) || DB.find("purchase_returns", x => x.warehouse_id === id);
-        // 仓库内仍有库存（任一商品数量非 0）时禁删
-        if (!ref) {
-            const stockMap = DB.stockMap()[id] || {};
-            ref = Object.keys(stockMap).some(k => Utils.num(stockMap[k]) !== 0) ? { _stock: true } : null;
-        }
-    }
     else if (coll === "categories") ref = DB.find("items", x => x.category_id === id) || DB.find("categories", x => x.parent_id === id);
     else if (coll === "units") ref = DB.find("items", x => x.sales_unit === r.name || x.purchase_unit === r.name || x.stock_unit === r.name);
     else if (coll === "currencies") ref = DB.find("items", x => x.purchase_currency === r.code) || DB.find("customers", x => x.currency === r.code) || DB.find("suppliers", x => x.currency === r.code) || DB.find("sales_orders", x => x.currency === r.code) || DB.find("purchase_orders", x => x.currency === r.code);

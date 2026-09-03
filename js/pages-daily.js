@@ -992,8 +992,15 @@ Pages.purchaseOrders = function () {
 Pages.deletePO = function (id) {
     const o = DB.get("purchase_orders", id);
     if (!o) return;
-    if (o.status !== "draft") { toast("已进货的采购单不能删除，请先处理关联的进货记录", "error"); return; }
+    // 不受状态/环扣限制，点删除即删（已进货的自动回冲加量库存，与清除采购迁移同口径）
     confirmModal(`确定要删除采购单 ${o.no} 吗？此操作不可恢复。`, () => {
+        if (o.status === "received") {
+            o.lines.forEach(l => {
+                const it = DB.get("items", l.item_id);
+                const rate = it && Utils.num(it.purchase_to_stock) > 0 ? Utils.num(it.purchase_to_stock) : 1;
+                DB.addStock(o.warehouse_id, l.item_id, -Utils.num(l.qty) * rate);
+            });
+        }
         DB.remove("purchase_orders", id);
         toast("采购单已删除", "success");
         render();

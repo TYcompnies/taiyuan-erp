@@ -149,7 +149,7 @@ Pages.accountsPayable = function () {
             <td class="num" style="color:${unpaid > 0 ? "var(--danger)" : "var(--green)"};font-weight:700">${fmt(unpaid)}${cnv(unpaid)}</td>
             <td>${unpaid <= 0 ? badge("已付清") : badge("未付款")}</td>
             <td class="num">${days}天</td>
-            <td class="action-col">${unpaid > 0 ? `<button class="link-btn" onclick="Pages.payPO('${o.id}')">登记付款</button>` : ""}</td>
+            <td class="action-col">${unpaid > 0 ? `<button class="link-btn" onclick="Pages.payPO('${o.id}')">登记付款</button>` : ""}<button class="link-btn danger" onclick="Pages.deletePO('${o.id}')">删除</button></td>
         </tr>`;
     }).join("");
 
