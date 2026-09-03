@@ -1,6 +1,6 @@
 /* ============================================================
    义乌市钛沅商贸有限公司 ERP 系统 - 核心应用
-   路由 / 布局 / 登录 / 仪表板 / 日常流程
+   路由 / 布局 / 登录 / 仪表板
    ============================================================ */
 "use strict";
 
@@ -477,7 +477,7 @@ function renderDashboard() {
             </div>
         </div>
         <div class="ops-flow-panel">
-            <p class="eyebrow">建议日常流程</p>
+            <p class="eyebrow">建议作业流程</p>
             <div class="flow-steps">
                 <span>采购单</span><b>→</b><span>进货入库 / 应付</span><b>→</b><span>销货订单</span><b>→</b><span>出货扣库存 / 应收</span><b>→</b><span>收付款</span>
             </div>
