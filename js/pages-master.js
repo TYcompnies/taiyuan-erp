@@ -112,11 +112,11 @@ Pages.itemForm = function (id) {
         <section class="form-section">
             <div class="form-section-title"><h3>单位与换算</h3><p>采购/销售/库存单位不同时，透过换算率换算。</p></div>
             <div class="form-grid section-grid">
-                <div class="form-item"><label>销售单位</label><select name="sales_unit"><option value="">请选择</option>${unitOpts("sales_unit")}</select></div>
-                <div class="form-item"><label>采购单位</label><select name="purchase_unit"><option value="">请选择</option>${unitOpts("purchase_unit")}</select></div>
-                <div class="form-item"><label>库存单位</label><select name="stock_unit"><option value="">请选择</option>${unitOpts("stock_unit")}</select></div>
-                <div class="form-item"><label>销售→库存换算</label><input type="number" step="0.0001" name="sales_to_stock" value="${it ? it.sales_to_stock : 1}"></div>
-                <div class="form-item"><label>采购→库存换算</label><input type="number" step="0.0001" name="purchase_to_stock" value="${it ? it.purchase_to_stock : 1}"></div>
+                <div class="form-item"><label>销售单位</label><select name="sales_unit" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("sales_unit")}</select></div>
+                <div class="form-item"><label>采购单位</label><select name="purchase_unit" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("purchase_unit")}</select></div>
+                <div class="form-item"><label>库存单位</label><select name="stock_unit" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("stock_unit")}</select></div>
+                <div class="form-item"><label>销售→库存换算</label><input type="number" step="0.0001" name="sales_to_stock" value="${it ? it.sales_to_stock : 1}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="salesConvPreview"></span></div>
+                <div class="form-item"><label>采购→库存换算</label><input type="number" step="0.0001" name="purchase_to_stock" value="${it ? it.purchase_to_stock : 1}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="purchaseConvPreview"></span></div>
             </div>
         </section>
         <section class="form-section">
@@ -147,6 +147,36 @@ Pages.itemForm = function (id) {
         </div>
     </form>`;
     renderShell("items", content, "首页 / 基本资料 / 商品主档");
+    Pages.updateUnitConv();
+};
+
+/* 销售/采购→库存换算实时反向预览
+   1 [销售单位] = X [库存单位]
+   1 [采购单位] = Y [库存单位]
+   rate<=0 或单位未选时降级为提示文案 */
+Pages.updateUnitConv = function () {
+    const form = document.querySelector("form.form-panel");
+    if (!form) return;
+    const val = (sel) => { const el = form.querySelector(`[name="${sel}"]`); return el ? el.value : ""; };
+    const num = (sel) => { const v = Utils.num(val(sel)); return v > 0 ? v : 0; };
+    const fmt = (n) => {
+        if (!n || !isFinite(n)) return n;
+        return Math.round(n * 10000) / 10000;
+    };
+    const salesU = val("sales_unit"), stockU = val("stock_unit"), purU = val("purchase_unit");
+    const sR = num("sales_to_stock"), pR = num("purchase_to_stock");
+    const salesEl = document.getElementById("salesConvPreview");
+    const purEl = document.getElementById("purchaseConvPreview");
+    if (salesEl) {
+        if (!salesU || !stockU) salesEl.textContent = "请先选择销售/库存单位";
+        else if (!sR) salesEl.textContent = "请填写销售→库存换算";
+        else salesEl.textContent = `1 ${salesU} = ${fmt(sR)} ${stockU}`;
+    }
+    if (purEl) {
+        if (!purU || !stockU) purEl.textContent = "请先选择采购/库存单位";
+        else if (!pR) purEl.textContent = "请填写采购→库存换算";
+        else purEl.textContent = `1 ${purU} = ${fmt(pR)} ${stockU}`;
+    }
 };
 
 Pages.saveItem = function (e, id) {

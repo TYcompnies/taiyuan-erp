@@ -443,6 +443,12 @@ body.sidebar-collapsed .main { margin-left: 0; }
     background: var(--bg); border: 1px solid var(--line);
     border-radius: var(--radius-sm); padding: 16px;
 }
+.unit-conv-preview {
+    font-size: 12px; color: #6b5b00;
+    background: #fff8d6; border: 1px solid #f1d97a;
+    border-radius: 4px; padding: 3px 8px; margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+}
 .bom-lines-head {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 10px;
