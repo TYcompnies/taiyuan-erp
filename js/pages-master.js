@@ -110,13 +110,18 @@ Pages.itemForm = function (id) {
             </div>
         </section>
         <section class="form-section">
-            <div class="form-section-title"><h3>单位与换算</h3><p>采购/销售/库存单位不同时，透过换算率换算。</p></div>
+            <div class="form-section-title"><h3>单位与换算</h3><p>第一行为主单位（销售/采购/库存）；第二行为最小单位口径。第一换算换到库存单位，第二换算(最小单位)＝1 主单位换算成最小库存单位。</p></div>
             <div class="form-grid section-grid">
                 <div class="form-item"><label>销售单位</label><select name="sales_unit" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("sales_unit")}</select></div>
                 <div class="form-item"><label>采购单位</label><select name="purchase_unit" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("purchase_unit")}</select></div>
                 <div class="form-item"><label>库存单位</label><select name="stock_unit" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("stock_unit")}</select></div>
-                <div class="form-item"><label>销售→库存换算</label><input type="number" step="0.0001" name="sales_to_stock" value="${it ? it.sales_to_stock : 1}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="salesConvPreview"></span></div>
-                <div class="form-item"><label>采购→库存换算</label><input type="number" step="0.0001" name="purchase_to_stock" value="${it ? it.purchase_to_stock : 1}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="purchaseConvPreview"></span></div>
+                <div class="form-item"><label>第二销售单位(最小单位)</label><select name="sales_unit2" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("sales_unit2")}</select></div>
+                <div class="form-item"><label>第二库存单位(最小单位)</label><select name="stock_unit2" onchange="Pages.updateUnitConv()"><option value="">请选择</option>${unitOpts("stock_unit2")}</select></div>
+                <div class="form-item"><label>第一销售→库存换算</label><input type="number" step="0.0001" name="sales_to_stock" value="${it ? it.sales_to_stock : 1}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="salesConvPreview"></span></div>
+                <div class="form-item"><label>第二销售→库存换算(最小单位)</label><input type="number" step="0.0001" name="sales_to_stock2" value="${it ? (it.sales_to_stock2 == null ? "" : it.sales_to_stock2) : ""}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="salesConv2Preview"></span></div>
+                <div class="form-item"><label>第一采购→库存换算</label><input type="number" step="0.0001" name="purchase_to_stock" value="${it ? it.purchase_to_stock : 1}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="purchaseConvPreview"></span></div>
+                <div class="form-item"><label>第二采购→库存换算(最小单位)</label><input type="number" step="0.0001" name="purchase_to_stock2" value="${it ? (it.purchase_to_stock2 == null ? "" : it.purchase_to_stock2) : ""}" oninput="Pages.updateUnitConv()"><span class="unit-conv-preview" id="purchaseConv2Preview"></span></div>
+                <div class="form-item wide"><span class="unit-conv-preview" id="minFactorHint"></span></div>
             </div>
         </section>
         <section class="form-section">
@@ -127,7 +132,9 @@ Pages.itemForm = function (id) {
                 <div class="form-item"><label>最低售价</label><input type="number" step="0.0001" name="min_price" value="${it ? it.min_price : ""}"></div>
                 <div class="form-item"><label>采购币别</label><select name="purchase_currency"><option value="">请选择</option>${curOpts}</select></div>
                 <div class="form-item"><label>安全库存</label><input type="number" step="0.0001" name="safety_stock" value="${it ? it.safety_stock : 0}"></div>
+                <div class="form-item"><label>安全库存(最小单位)</label><input type="number" step="0.0001" name="safety_stock2" value="${it ? (it.safety_stock2 == null ? "" : it.safety_stock2) : ""}" placeholder="以最小库存单位计"></div>
                 <div class="form-item"><label>最高库存</label><input type="number" step="0.0001" name="max_stock" value="${it ? it.max_stock : 0}"></div>
+                <div class="form-item"><label>最高库存(最小单位)</label><input type="number" step="0.0001" name="max_stock2" value="${it ? (it.max_stock2 == null ? "" : it.max_stock2) : ""}" placeholder="以最小库存单位计"></div>
             </div>
         </section>
         <section class="form-section">
@@ -150,10 +157,10 @@ Pages.itemForm = function (id) {
     Pages.updateUnitConv();
 };
 
-/* 销售/采购→库存换算实时反向预览
-   1 [销售单位] = X [库存单位]
-   1 [采购单位] = Y [库存单位]
-   rate<=0 或单位未选时降级为提示文案 */
+/* 单位换算实时反向预览
+   第一换算：1 [销售单位] = X [库存单位]；1 [采购单位] = Y [库存单位]
+   第二换算(最小单位)：1 [销售单位] = X2 [第二库存单位]；1 [采购单位] = Y2 [第二库存单位]
+   总览最小单位换算：由 第二换算 ÷ 第一换算 自动得出（库存总览「第二目前库存」用） */
 Pages.updateUnitConv = function () {
     const form = document.querySelector("form.form-panel");
     if (!form) return;
@@ -165,17 +172,34 @@ Pages.updateUnitConv = function () {
     };
     const salesU = val("sales_unit"), stockU = val("stock_unit"), purU = val("purchase_unit");
     const sR = num("sales_to_stock"), pR = num("purchase_to_stock");
-    const salesEl = document.getElementById("salesConvPreview");
-    const purEl = document.getElementById("purchaseConvPreview");
-    if (salesEl) {
-        if (!salesU || !stockU) salesEl.textContent = "请先选择销售/库存单位";
-        else if (!sR) salesEl.textContent = "请填写销售→库存换算";
-        else salesEl.textContent = `1 ${salesU} = ${fmt(sR)} ${stockU}`;
-    }
-    if (purEl) {
-        if (!purU || !stockU) purEl.textContent = "请先选择采购/库存单位";
-        else if (!pR) purEl.textContent = "请填写采购→库存换算";
-        else purEl.textContent = `1 ${purU} = ${fmt(pR)} ${stockU}`;
+    const k2U = val("stock_unit2");
+    const s2R = num("sales_to_stock2"), p2R = num("purchase_to_stock2");
+    const setTxt = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    // 第一换算（主单位 → 库存单位）
+    if (!salesU || !stockU) setTxt("salesConvPreview", "请先选择销售/库存单位");
+    else if (!sR) setTxt("salesConvPreview", "请填写销售→库存换算");
+    else setTxt("salesConvPreview", `1 ${salesU} = ${fmt(sR)} ${stockU}`);
+    if (!purU || !stockU) setTxt("purchaseConvPreview", "请先选择采购/库存单位");
+    else if (!pR) setTxt("purchaseConvPreview", "请填写采购→库存换算");
+    else setTxt("purchaseConvPreview", `1 ${purU} = ${fmt(pR)} ${stockU}`);
+    // 第二换算（主单位 → 最小库存单位）
+    if (!salesU) setTxt("salesConv2Preview", "请先选择销售单位");
+    else if (!k2U) setTxt("salesConv2Preview", "请先选择第二库存单位(最小单位)");
+    else if (!s2R) setTxt("salesConv2Preview", "请填写第二销售→库存换算");
+    else setTxt("salesConv2Preview", `1 ${salesU} = ${fmt(s2R)} ${k2U}（最小单位）`);
+    if (!purU) setTxt("purchaseConv2Preview", "请先选择采购单位");
+    else if (!k2U) setTxt("purchaseConv2Preview", "请先选择第二库存单位(最小单位)");
+    else if (!p2R) setTxt("purchaseConv2Preview", "请填写第二采购→库存换算");
+    else setTxt("purchaseConv2Preview", `1 ${purU} = ${fmt(p2R)} ${k2U}（最小单位）`);
+    // 总览最小单位换算（第二 ÷ 第一；销售组优先，缺则用采购组）
+    let f = 0, fU = "";
+    if (sR > 0 && s2R > 0 && stockU) { f = s2R / sR; fU = stockU; }
+    else if (pR > 0 && p2R > 0 && stockU) { f = p2R / pR; fU = stockU; }
+    const hintEl = document.getElementById("minFactorHint");
+    if (hintEl) {
+        if (f > 0 && k2U) hintEl.textContent = `总览最小单位换算：1 ${fU} = ${fmt(f)} ${k2U}（由第二换算 ÷ 第一换算自动得出；库存总览「第二目前库存(最小单位)」按此换算，不重复计入库存价值）`;
+        else if (k2U) hintEl.textContent = "填写第一/第二换算与最小库存单位后，自动得出库存总览「第二目前库存」换算比例";
+        else hintEl.textContent = "";
     }
 };
 
@@ -192,10 +216,13 @@ Pages.saveItem = function (e, id) {
         code: d.code, name: d.item_name, english_name: d.english_name, spec: d.spec,
         brand: d.brand, model: d.model, category_id: d.category_id, product_type: d.product_type,
         sales_unit: d.sales_unit, purchase_unit: d.purchase_unit, stock_unit: d.stock_unit,
+        sales_unit2: d.sales_unit2, stock_unit2: d.stock_unit2,
         sales_to_stock: Utils.num(d.sales_to_stock) || 1, purchase_to_stock: Utils.num(d.purchase_to_stock) || 1,
+        sales_to_stock2: Utils.num(d.sales_to_stock2) || 0, purchase_to_stock2: Utils.num(d.purchase_to_stock2) || 0,
         cost: Utils.num(d.cost), price: Utils.num(d.price), min_price: Utils.num(d.min_price),
         purchase_currency: d.purchase_currency, safety_stock: Utils.num(d.safety_stock),
-        max_stock: Utils.num(d.max_stock), weight: Utils.num(d.weight), volume: Utils.num(d.volume),
+        safety_stock2: Utils.num(d.safety_stock2) || 0, max_stock: Utils.num(d.max_stock),
+        max_stock2: Utils.num(d.max_stock2) || 0, weight: Utils.num(d.weight), volume: Utils.num(d.volume),
         length_cm: Utils.num(d.length_cm), width_cm: Utils.num(d.width_cm), height_cm: Utils.num(d.height_cm),
         barcode: d.barcode, qrcode: d.qrcode, remark: d.remark || "", disabled: d.disabled === "1"
     };
