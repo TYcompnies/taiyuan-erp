@@ -34,7 +34,7 @@ async function db(page, fn, arg) {
 }
 
 (async () => {
-    browser = await chromium.launch({ headless: true, channel: 'msedge' });
+    browser = await chromium.launch({ headless: true, channel: 'msedge', args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const ctx = await browser.newContext();
     page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'domcontentloaded' });

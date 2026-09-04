@@ -17,7 +17,7 @@ const near = (a, b, eps) => Math.abs(UtilsNum(a) - b) < (eps === undefined ? 0.0
 function UtilsNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
   page.on('pageerror', err => errors.push('[pageerror] ' + err.message));

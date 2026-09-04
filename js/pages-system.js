@@ -54,10 +54,6 @@ Pages.inventoryOverview = function () {
                     <span class="stock-bar ${cls}"><i style="width:${it.safety_stock > 0 ? Math.min(Math.max(qty, 0) / it.safety_stock * 100, 100) : 100}%"></i></span>
                 </div></td>
                 ${minQtyCell}
-                <td class="num">${it.safety_stock} <small style="color:var(--muted)">${h(u1)}</small></td>
-                ${minCell(it.safety_stock2)}
-                <td class="num">${it.max_stock || "-"} <small style="color:var(--muted)">${h(u1)}</small></td>
-                ${minCell(it.max_stock2)}
                 <td>${qty < 0 ? badge("负库存") : qty < it.safety_stock ? badge("低库存") : badge("正常")}</td>
                 <td class="num">${fmt(value)}</td>
                 <td class="num">${rate}</td>
@@ -70,7 +66,7 @@ Pages.inventoryOverview = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>进销存库存总览</h1><p>查询各仓库商品库存数量、成本与库存价值（本位币 ${COMPANY.baseCurrency}）。「第二…(最小单位)」按最小库存单位显示，不重复计入库存价值。</p></div>
+        <div><h1>进销存库存总览</h1><p>查询各仓库商品库存数量、成本与库存价值（本位币 ${COMPANY.baseCurrency}）。「库存(最小单位)」按最小库存单位显示，不重复计入库存价值。</p></div>
         <div class="head-actions"><a class="btn ghost" href="#/inventory/inventory_safety">进销存安全库存</a></div>
     </div>
     <div class="toolbar">
@@ -79,8 +75,8 @@ Pages.inventoryOverview = function () {
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
-            <thead><tr><th>品号</th><th>品名</th><th>规格</th><th>仓库</th><th>币别</th><th class="num">采购成本</th><th class="num">成本(本位币)</th><th>库存单位</th><th>目前库存</th><th class="num">第二目前库存(最小单位)</th><th class="num">安全库存</th><th class="num">第二安全库存(最小单位)</th><th class="num">最高库存</th><th class="num">第二最高库存(最小单位)</th><th>状态</th><th class="num">库存价值(本位币)</th><th class="num">汇率</th><th>最后异动</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="18"><div class="empty-state"><div class="big">📦</div>没有符合的库存资料</div></td></tr>`}</tbody>
+            <thead><tr><th>品号</th><th>品名</th><th>规格</th><th>仓库</th><th>币别</th><th class="num">采购成本</th><th class="num">成本(本位币)</th><th>库存单位</th><th>库存</th><th class="num">库存(最小单位)</th><th>状态</th><th class="num">库存价值(本位币)</th><th class="num">汇率</th><th>最后异动</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="14"><div class="empty-state"><div class="big">📦</div>没有符合的库存资料</div></td></tr>`}</tbody>
         </table>
     </div>`;
     renderShell("inventory_overview", content, "首页 / 报表查询 / 进销存库存总览");

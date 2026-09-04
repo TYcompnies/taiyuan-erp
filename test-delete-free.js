@@ -48,7 +48,7 @@ async function clickRowDelete(page, rowSel, rowText) {
 }
 
 (async () => {
-    const browser = await chromium.launch({ channel: 'msedge', headless: true });
+    const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const page = await browser.newPage();
     try {
         await login(page);

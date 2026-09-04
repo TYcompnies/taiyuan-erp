@@ -7,7 +7,7 @@ const { chromium } = require("playwright");
 const BASE = (process.env.BASE || "http://127.0.0.1:8902") + "/";
 
 (async () => {
-    const browser = await chromium.launch({ channel: "msedge", headless: true });
+    const browser = await chromium.launch({ channel: "msedge", headless: true, args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const ctx = await browser.newContext();
     await ctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
     const page = await ctx.newPage();

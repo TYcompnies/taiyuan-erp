@@ -82,7 +82,7 @@ const poState = (page, id) => page.evaluate((oid) => {
 }, id);
 
 (async () => {
-    const browser = await chromium.launch({ channel: 'msedge', headless: true });
+    const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const page = await browser.newPage();
     try {
         await login(page);

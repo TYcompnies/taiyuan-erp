@@ -7,8 +7,8 @@
      - 新增 第二销售→库存换算(最小单位)、第二采购→库存换算(最小单位)
      - 成本与售价 新增 安全库存(最小单位)、最高库存(最小单位)（独立输入）
    进销存库存总览：
-     - 新增 第二目前库存(最小单位)（= 目前库存 × 第二换算 ÷ 第一换算；不重复计入库存价值）
-     - 新增 第二安全库存(最小单位)、最高库存、第二最高库存(最小单位)
+     - 新增 库存(最小单位)（= 库存 × 第二换算 ÷ 第一换算；不重复计入库存价值）
+     - 「目前库存」改名「库存」
    验证：
    F1 表单标签改名 + 新标签齐全；独立 label 不再出现「销售→库存换算」
    F2 新 select/input 字段存在
@@ -16,10 +16,9 @@
    F4 改 sales_to_stock2 24→48 实时刷新预览与总览最小换算提示
    F5 保存后新字段落库 + 旧字段零破坏
    F6 旧商品（无新字段）编辑页正常、总览最小列显示 —
-   F7 总览列顺序与数字：第二目前库存=目前库存×(24÷1)
-   F8 库存价值列不因第二列翻倍（50.00 而非 1200）
-   F9 第二安全库存/第二最高库存为独立数字（50/13000，非主单位×24）
-   F10 总览含「最高库存」列，共 18 列
+   F7 总览列顺序与数字：库存(最小单位)=库存×(24÷1)
+   F8 库存价值列不因最小列翻倍（50.00 而非 1200）
+   F9 总览不再含安全/最高库存相关列（共 14 列）
    ============================================================ */
 const { chromium } = require("playwright");
 const BASE = process.env.BASE || "http://127.0.0.1:8904";
@@ -31,7 +30,7 @@ const check = (cond, msg) => {
 };
 
 (async () => {
-    const browser = await chromium.launch({ channel: "msedge", headless: true });
+    const browser = await chromium.launch({ channel: "msedge", headless: true, args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
@@ -173,7 +172,7 @@ const check = (cond, msg) => {
     check(f6a.s1 === "1 箱 = 12 个", `F6 旧商品第一换算预览正常（实际: ${f6a.s1}）`);
     check(f6a.s2.includes("请先选择第二库存单位"), `F6 旧商品第二换算降级提示（实际: ${f6a.s2}）`);
 
-    console.log("== F7/F8/F9/F10 库存总览 ==");
+    console.log("== F7/F8/F9 库存总览 ==");
     await gotoHash("#/inventory/inventory_overview");
     const ov = await page.evaluate(() => {
         const ths = [...document.querySelectorAll("#app table thead th")].map(t => t.textContent.trim());
@@ -185,21 +184,17 @@ const check = (cond, msg) => {
     });
     console.log("  表头:", ov.ths.join(" | "));
     console.log("  MN0001 行:", JSON.stringify(ov.cells));
-    check(ov.headerCount === 18, `F10 总览共 18 列（实际: ${ov.headerCount}）`);
-    check(ov.ths[8] === "目前库存" && ov.ths[9] === "第二目前库存(最小单位)", `F7 目前库存后接第二目前库存(最小单位)`);
-    check(ov.ths[10] === "安全库存" && ov.ths[11] === "第二安全库存(最小单位)", `F7 安全库存后接第二安全库存(最小单位)`);
-    check(ov.ths[12] === "最高库存" && ov.ths[13] === "第二最高库存(最小单位)", `F10 安全库存后新增最高库存/第二最高库存(最小单位)`);
-    check(ov.ths[15] === "库存价值(本位币)", `F8 库存价值列仍在（不重复计最小单位）`);
-    check(ov.cells.length === 18, `F7 MN0001 行 18 格（实际: ${ov.cells.length}）`);
-    check(/^120\s*包/.test(ov.cells[9]), `F7 第二目前库存=5箱×24=120 包（实际: ${ov.cells[9]}）`);
-    check(/^5\s*箱/.test(ov.cells[8]), `F7 目前库存 5 箱（实际: ${ov.cells[8]}）`);
-    check(/^50\s*包/.test(ov.cells[11]), `F9 第二安全库存独立 50 包（实际: ${ov.cells[11]}）`);
-    check(/^500\s*箱/.test(ov.cells[12]), `F10 最高库存列 500 箱（实际: ${ov.cells[12]}）`);
-    check(/^13000\s*包/.test(ov.cells[13]), `F9 第二最高库存独立 13000 包（实际: ${ov.cells[13]}）`);
-    check(/^50/.test(ov.cells[15]), `F8 库存价值=5×10=50.00 未因最小列翻倍（实际: ${ov.cells[15]}）`);
-    check(/^—$/.test(ov.cellso[9]), `F6 旧商品第二目前库存显示 —（实际: ${ov.cellso[9]}）`);
-    check(/^—$/.test(ov.cellso[11]) && /^—$/.test(ov.cellso[13]), `F6 旧商品第二安全/最高(最小)显示 —`);
-    check(/^120/.test(ov.cellso[15]), `F8 旧商品库存价值 40×3=120.00（实际: ${ov.cellso[15]}）`);
+    check(ov.headerCount === 14, `F9 总览共 14 列（实际: ${ov.headerCount}）`);
+    check(ov.ths[8] === "库存" && ov.ths[9] === "库存(最小单位)", `F7 「库存」后接「库存(最小单位)」（实际: ${ov.ths[8]} | ${ov.ths[9]}）`);
+    check(ov.ths[10] === "状态" && ov.ths[11] === "库存价值(本位币)", `F8 「状态」后接「库存价值(本位币)」（实际: ${ov.ths[10]} | ${ov.ths[11]}）`);
+    check(!ov.ths.some(t => /安全库存|最高库存/.test(t)), `F9 总览已移除安全/最高库存相关列（实际表头含上述文字: ${ov.ths.filter(t => /安全库存|最高库存/.test(t)).join(",") || "无"}）`);
+    check(ov.cells.length === 14, `F7 MN0001 行 14 格（实际: ${ov.cells.length}）`);
+    check(/^5\s*箱/.test(ov.cells[8]), `F7 库存 5 箱（实际: ${ov.cells[8]}）`);
+    check(/^120\s*包/.test(ov.cells[9]), `F7 库存(最小单位)=5箱×24=120 包（实际: ${ov.cells[9]}）`);
+    check(/^50/.test(ov.cells[11]), `F8 库存价值=5×10=50.00 未因最小列翻倍（实际: ${ov.cells[11]}）`);
+    check(ov.cells[10] === "正常" || ov.cells[10] === "低库存", `F8 状态列仍存在（实际: ${ov.cells[10]}）`);
+    check(/^—$/.test(ov.cellso[9]), `F6 旧商品库存(最小单位)显示 —（实际: ${ov.cellso[9]}）`);
+    check(/^120/.test(ov.cellso[11]), `F8 旧商品库存价值 40×3=120.00（实际: ${ov.cellso[11]}）`);
 
     console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
     await browser.close();

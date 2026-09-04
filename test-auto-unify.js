@@ -61,7 +61,7 @@ async function state() {
 }
 
 (async () => {
-    browser = await chromium.launch({ headless: true, channel: 'msedge' });
+    browser = await chromium.launch({ headless: true, channel: 'msedge', args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const ctx = await browser.newContext();
     page = await ctx.newPage();
     // 断云：textdb / GitHub 全部拦截并模拟「云端无数据」，测试无真实网络副作用

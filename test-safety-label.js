@@ -6,7 +6,7 @@
    S1 安全库存页表头为「总仓库存」（不再出现「目前库存」）
    S2 安全库存页数值 = 各仓库合计（两仓 60+40=100）
    S3 单元格悬浮 title 含各仓明细（主仓/备用仓）
-   S4 库存总览页表头仍为「目前库存」（分仓口径不受影响）
+   S4 库存总览页表头为「库存」+「库存(最小单位)」，无安全/最高库存相关列
    ============================================================ */
 const { chromium } = require("playwright");
 const BASE = process.env.BASE || "http://127.0.0.1:8904";
@@ -18,7 +18,7 @@ const check = (cond, msg) => {
 };
 
 (async () => {
-    const browser = await chromium.launch({ channel: "msedge", headless: true });
+    const browser = await chromium.launch({ channel: "msedge", headless: true, args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
@@ -86,12 +86,14 @@ const check = (cond, msg) => {
     check(sf.qty && /^100/.test(sf.qty), `总仓库存数值=两仓合计 100（实际: ${sf.qty}）`);
     check(sf.title && sf.title.includes("主仓库") && sf.title.includes("备用仓") && sf.title.includes("60") && sf.title.includes("40"), `悬浮 title 含各仓明细 60/40（实际: ${sf.title}）`);
 
-    console.log("== S4 库存总览页（分仓口径不变）==");
+    console.log("== S4 库存总览页（分仓口径，v20260904d 改名+精简列）==");
     await gotoHash("#/inventory/inventory_overview");
     const ovThs = await page.evaluate(() =>
         [...document.querySelectorAll("#app .table thead th")].map(t => t.textContent.trim()).join("|"));
     console.log("  总览表头:", ovThs);
-    check(ovThs.includes("目前库存"), `库存总览仍为「目前库存」（分仓显示，实际: ${ovThs}）`);
+    check(ovThs.includes("库存"), `库存总览表头含「库存」（分仓显示，实际: ${ovThs}）`);
+    check(!ovThs.includes("目前库存"), `库存总览表头不再出现「目前库存」`);
+    check(ovThs.includes("库存(最小单位)"), `库存总览表头含「库存(最小单位)」`);
 
     console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
     await browser.close();

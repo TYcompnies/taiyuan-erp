@@ -197,8 +197,8 @@ Pages.updateUnitConv = function () {
     else if (pR > 0 && p2R > 0 && stockU) { f = p2R / pR; fU = stockU; }
     const hintEl = document.getElementById("minFactorHint");
     if (hintEl) {
-        if (f > 0 && k2U) hintEl.textContent = `总览最小单位换算：1 ${fU} = ${fmt(f)} ${k2U}（由第二换算 ÷ 第一换算自动得出；库存总览「第二目前库存(最小单位)」按此换算，不重复计入库存价值）`;
-        else if (k2U) hintEl.textContent = "填写第一/第二换算与最小库存单位后，自动得出库存总览「第二目前库存」换算比例";
+        if (f > 0 && k2U) hintEl.textContent = `总览最小单位换算：1 ${fU} = ${fmt(f)} ${k2U}（由第二换算 ÷ 第一换算自动得出；库存总览「库存(最小单位)」按此换算，不重复计入库存价值）`;
+        else if (k2U) hintEl.textContent = "填写第一/第二换算与最小库存单位后，自动得出库存总览「库存(最小单位)」换算比例";
         else hintEl.textContent = "";
     }
 };

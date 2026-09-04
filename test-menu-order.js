@@ -38,7 +38,7 @@ async function login(page) {
 }
 
 (async () => {
-    const browser = await chromium.launch({ channel: 'msedge', headless: true });
+    const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ["--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage"] });
     const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
     try {
         await login(page);
