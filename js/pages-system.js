@@ -80,6 +80,8 @@ Pages.invWh = function (v) { window.__invWh = v; Pages.inventoryOverview(); };
    ============================================================ */
 Pages.inventorySafety = function () {
     const items = DB.list("items").filter(i => !i.disabled).sort((a, b) => a.code.localeCompare(b.code));
+    const sm = DB.stockMap();
+    const whs = DB.list("warehouses");
     const rows = items.map(it => {
         const total = DB.totalStock(it.id);
         const short = it.safety_stock - total;
@@ -87,12 +89,14 @@ Pages.inventorySafety = function () {
         // 不足数量：负库存显示「缺货」；不足显示 +N；充足显示 0（避免负数误解）
         const shortTxt = total < 0 ? "缺货" : short > 0 ? "+" + short : "0";
         const unit = it.stock_unit || it.sales_unit || "";
+        // 总仓库存＝全部仓库实时合计；title 悬浮显示各仓明细（主仓/各分仓自动带入）
+        const breakdown = whs.map(w => `${w.name} ${Utils.num(sm[w.id] && sm[w.id][it.id])}${unit || ""}`).join("，");
         return `<tr>
             <td><b>${h(it.code)}</b></td>
             <td>${h(it.name)}</td>
             <td>${h(it.brand || "-")}</td>
             <td>${h(unit)}</td>
-            <td class="num">${total} <small style="color:var(--muted)">${h(unit)}</small></td>
+            <td class="num" title="各仓库存：${h(breakdown)}">${total} <small style="color:var(--muted)">${h(unit)}</small></td>
             <td class="num">${it.safety_stock} <small style="color:var(--muted)">${h(unit)}</small></td>
             <td class="num">${it.max_stock || "-"}</td>
             <td class="num" style="color:${cls === "green" ? "var(--green)" : cls === "orange" ? "var(--orange)" : "var(--danger)"};font-weight:700">${shortTxt}</td>
@@ -105,7 +109,7 @@ Pages.inventorySafety = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>进销存安全库存</h1><p>低于安全库存的商品需要评估是否采购；负库存需修正。</p></div>
+        <div><h1>进销存安全库存</h1><p>总仓库存＝全部仓库实时合计（主仓及各分仓自动带入）；低于安全库存的商品需要评估是否采购，负库存需修正。</p></div>
         <div class="head-actions"><a class="btn ghost" href="#/inventory/inventory_overview">进销存库存总览</a></div>
     </div>
     <div class="kpi-grid">
@@ -115,7 +119,7 @@ Pages.inventorySafety = function () {
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
-            <thead><tr><th>品号</th><th>品名</th><th>品牌</th><th>单位</th><th class="num">目前库存</th><th class="num">安全库存</th><th class="num">最高库存</th><th class="num">不足数量</th><th>状态</th><th class="action-col">操作</th></tr></thead>
+            <thead><tr><th>品号</th><th>品名</th><th>品牌</th><th>单位</th><th class="num">总仓库存</th><th class="num">安全库存</th><th class="num">最高库存</th><th class="num">不足数量</th><th>状态</th><th class="action-col">操作</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
     </div>`;
