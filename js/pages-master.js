@@ -440,7 +440,7 @@ Pages.warehouses = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>仓库主档</h1><p>维护仓库基础资料；采购进货、销货出货与库存调整都要指定仓库。</p></div>
+        <div><h1>仓库主档</h1><p>维护仓库基础资料；采购进货、销货出货与样品领料都要指定仓库。</p></div>
         <div class="head-actions">${can("master.warehouse") ? `<a class="btn primary" href="#/master/warehouses/create">+ 新增仓库</a>` : ""}</div>
     </div>
     <div class="table-wrap master-table-wrap">

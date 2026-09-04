@@ -49,7 +49,7 @@ assert(coll('suppliers').length === 4, '4 个供应商');
 assert(coll('sales_orders').length === 0, '销货订单为空');
 assert(coll('shipments').length === 0, '出货单为空');
 assert(coll('purchase_orders').length === 0, '采购单为空');
-assert(coll('inventory_adjusts').length === 0, '库存调整为空');
+assert(coll('inventory_adjusts').length === 0, '样品领料为空');
 assert(coll('sales_returns').length === 0, '销货退回为空');
 assert(coll('purchase_returns').length === 0, '采购退回为空');
 assert(coll('expenses').length === 0, '费用支出为空');

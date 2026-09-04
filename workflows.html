@@ -133,7 +133,7 @@
     <tbody>
       <tr><td>🧾 新增銷貨訂單</td><td><span class="role r-biz">業務</span></td><td>🛒 新增採購單</td><td><span class="role r-adm">管理者/管理員</span></td></tr>
       <tr><td>🚚 出貨扣庫存</td><td><span class="role r-wh">倉管</span></td><td>📦 進貨入庫</td><td><span class="role r-wh">倉管</span></td></tr>
-      <tr><td>🏷️ 庫存調整</td><td><span class="role r-wh">倉管</span></td><td>↩️ 銷貨退回/折讓</td><td><span class="role r-biz">業務</span></td></tr>
+      <tr><td>🏷️ 樣品領料</td><td><span class="role r-wh">倉管</span></td><td>↩️ 銷貨退回/折讓</td><td><span class="role r-biz">業務</span></td></tr>
       <tr><td>💳 費用支出</td><td><span class="role r-acc">會計</span></td><td>📒 傳票作業</td><td><span class="role r-acc">會計</span></td></tr>
       <tr><td>📊 損益表</td><td><span class="role r-acc">會計/業務(唯讀)</span></td><td>📈 庫存總覽</td><td><span class="role r-all">依權限</span></td></tr>
       <tr><td>💾 系統備份</td><td><span class="role r-adm">管理員</span></td><td>📥 Excel 導入中心</td><td><span class="role r-adm">管理員</span></td></tr>
@@ -218,9 +218,9 @@
 <div class="card">
   <h2><span class="no">四</span>庫存管理（倉管負責）</h2>
 
-  <h3>庫存調整流程（盤點差異 / 拆包組包）</h3>
+  <h3>樣品領料流程（盤點差異 / 拆包組包）</h3>
   <div class="flow">
-    <div class="fstep"><div class="node" style="border-top-color:#2563eb"><span class="role r-wh">倉管</span><b>① 新增調整單</b><small>庫存調整→新增→選倉庫</small></div></div>
+    <div class="fstep"><div class="node" style="border-top-color:#2563eb"><span class="role r-wh">倉管</span><b>① 新增領料單</b><small>樣品領料→新增→選倉庫</small></div></div>
     <div class="fstep"><div class="node" style="border-top-color:#2563eb"><span class="role r-wh">倉管</span><b>② 選商品填數量</b><small>正數入庫/負數出庫，標註庫存單位</small></div></div>
     <div class="fstep"><div class="node auto"><span class="role r-all">系統</span><b>③ 即時預覽</b><small>異動前/異動後庫存自動預覽</small></div></div>
     <div class="fstep"><div class="node auto"><span class="role r-all">系統</span><b>④ 過賬生效</b><small>庫存更新 + ADJ 自動傳票；刪除時按 −數量反向沖銷</small></div></div>
@@ -253,7 +253,7 @@
     <div class="fstep"><div class="node"><span class="role r-acc">會計</span><b>資產負債表</b><small>資產=負債+權益</small></div></div>
     <div class="fstep"><div class="node"><span class="role r-acc">會計</span><b>損益表</b><small>收入−成本−費用=淨利（收入按出貨日歸屬）</small></div></div>
   </div>
-  <p class="note">7 種業務事件（出貨/進貨/收款/付款/費用/銷退/採退/庫存調整）皆<b>自動生成已過賬傳票</b>，會計無需重複切票；刪除單據時傳票自動作廢。</p>
+  <p class="note">7 種業務事件（出貨/進貨/收款/付款/費用/銷退/採退/樣品領料）皆<b>自動生成已過賬傳票</b>，會計無需重複切票；刪除單據時傳票自動作廢。</p>
 </div>
 
 <!-- 6 基本資料 -->
@@ -306,7 +306,7 @@
       <tr><th>銷貨訂單（查看/建立）</th><td class="ok">✓</td><td class="ok">✓ 接單</td><td class="ok">✓ 查看</td><td class="no2">—</td></tr>
       <tr><th>出貨單（出貨扣庫）</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓ 出貨</td><td class="no2">—</td></tr>
       <tr><th>採購單（查看/建立）</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓ 查看/進貨</td><td class="no2">—</td></tr>
-      <tr><th>庫存調整</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓ 調整</td><td class="no2">—</td></tr>
+      <tr><th>樣品領料</th><td class="ok">✓</td><td class="no2">—</td><td class="ok">✓ 領料</td><td class="no2">—</td></tr>
       <tr><th>銷貨退回/折讓</th><td class="ok">✓</td><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td></tr>
       <tr><th>採購退回/折讓</th><td class="ok">✓</td><td class="no2">—</td><td class="no2">—</td><td class="no2">—</td></tr>
       <tr class="grp"><td colspan="5">出勤管理</td></tr>

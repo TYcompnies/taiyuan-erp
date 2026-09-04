@@ -201,7 +201,7 @@ const MENU = [
             { code: "shipments", label: "出货单", hash: "#/shipments", perm: "shipment.view" },
             { code: "purchase_returns", label: "采购退回/折让", hash: "#/purchase-returns", perm: "purchase_return.view" },
             { code: "sales_returns", label: "销货退回/折让", hash: "#/sales-returns", perm: "sales_return.view" },
-            { code: "inventory_adjust", label: "库存调整", hash: "#/inventory/inventory_adjust", perm: "inventory.view" }
+            { code: "inventory_adjust", label: "样品领料", hash: "#/inventory/inventory_adjust", perm: "inventory.view" }
         ]
     },
     {
@@ -414,7 +414,7 @@ function renderDashboard() {
 
     // 上线检核
     const checks = [
-        { label: "仓库设定", count: DB.list("warehouses").length + "笔", unit: "笔", status: "ok", link: "#/master/warehouses", desc: "至少需要一个可用仓库，采购进货、销货出货与库存调整才有落点。" },
+        { label: "仓库设定", count: DB.list("warehouses").length + "笔", unit: "笔", status: "ok", link: "#/master/warehouses", desc: "至少需要一个可用仓库，采购进货、销货出货与样品领料才有落点。" },
         { label: "客户资料", count: DB.list("customers").length + "笔", unit: "笔", status: "ok", link: "#/master/customers", desc: "销货订单需要客户；散客与平台订单可使用 WALKIN 客户并填实际收件资料。" },
         { label: "供应商资料", count: DB.list("suppliers").length + "笔", unit: "笔", status: "ok", link: "#/master/suppliers", desc: "采购单需要供应商，进货后才能形成应付账款。" },
         { label: "商品成本缺漏", count: items.filter(i => !i.disabled && (!i.cost || i.cost <= 0)).length + "笔", unit: "笔", status: "ok", link: "#/master/items", desc: "销货成本影响毛利核算；商品成本不可空白或为 0。" },

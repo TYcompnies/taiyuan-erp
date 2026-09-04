@@ -1,6 +1,6 @@
 /* ============================================================
    义乌市钛沅商贸有限公司 ERP 系统 - 日常作业页面
-   采购单 / 销货订单 / 出货单 / 采购退回折让 / 销货退回折让 / 库存调整
+   采购单 / 销货订单 / 出货单 / 采购退回折让 / 销货退回折让 / 样品领料
    ============================================================ */
 "use strict";
 
@@ -1292,7 +1292,9 @@ Pages.savePO = function (e, id) {
 };
 
 /* ============================================================
-   库存调整
+   样品领料（原库存调整模块，20260904b 改名：仅 UI label 变更，
+   collection=inventory_adjusts / 路由 #/inventory/inventory_adjust /
+   字段 type(调整/拆包/组包) / 权限 inventory.view|inventory.adjust 全部保留）
    ============================================================ */
 Pages.inventoryAdjust = function () {
     const list = DB.list("inventory_adjusts").sort((a, b) => b.no.localeCompare(a.no));
@@ -1316,23 +1318,23 @@ Pages.inventoryAdjust = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>库存调整</h1><p>处理盘点差异、拆包/组包等库存异动；异动会即时更新仓库库存。</p></div>
-        <div class="head-actions">${can("inventory.adjust") ? `<a class="btn primary" href="#/inventory/inventory_adjust/create">+ 新增库存调整</a>` : ""}</div>
+        <div><h1>样品领料</h1><p>处理盘点差异、拆包/组包等库存异动；异动会即时更新仓库库存。</p></div>
+        <div class="head-actions">${can("inventory.adjust") ? `<a class="btn primary" href="#/inventory/inventory_adjust/create">+ 新增样品领料</a>` : ""}</div>
     </div>
     <div class="table-wrap list-scroll">
         <table class="table">
             <thead><tr><th>单号</th><th>类型</th><th>来源类型</th><th>来源单号</th><th>仓库</th><th>品号 / 品名</th><th class="num">数量</th><th class="num">异动前 → 后</th><th>建立人</th><th>异动时间</th><th>备注</th><th class="action-col">操作</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="12"><div class="empty-state"><div class="big">📭</div>暂无库存调整记录</div></td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="12"><div class="empty-state"><div class="big">📭</div>暂无样品领料记录</div></td></tr>`}</tbody>
         </table>
     </div>
-    <p class="stat-line">共 ${list.length} 笔库存调整</p>`;
-    renderShell("inventory_adjust", content, "首页 / 日常作业 / 库存调整");
+    <p class="stat-line">共 ${list.length} 笔样品领料</p>`;
+    renderShell("inventory_adjust", content, "首页 / 日常作业 / 样品领料");
 };
 
 Pages.deleteAdj = function (id) {
     const a = DB.get("inventory_adjusts", id);
     if (!a) return;
-    confirmModal("确定要删除这笔库存调整记录吗？删除后库存将按原数量反向冲销。", () => {
+    confirmModal("确定要删除这笔样品领料记录吗？删除后库存将按原数量反向冲销。", () => {
         a.lines.forEach(l => { DB.addStock(a.warehouse_id, l.item_id, -Utils.num(l.qty)); });
         DB.remove("inventory_adjusts", id);
         toast("已删除，库存已回冲", "success");
@@ -1343,8 +1345,8 @@ Pages.deleteAdj = function (id) {
 Pages.inventoryAdjustForm = function () {
     const content = `
     <div class="page-head">
-        <div><h2>库存调整｜新增</h2><p>调整类型：调整（盘点差异）、拆包（大包装拆小包）、组包（小包组合成大包装）。</p></div>
-        <div class="actions"><a class="btn" href="#/inventory/inventory_adjust">返回库存调整</a></div>
+        <div><h2>样品领料｜新增</h2><p>调整类型：调整（盘点差异）、拆包（大包装拆小包）、组包（小包组合成大包装）。</p></div>
+        <div class="actions"><a class="btn" href="#/inventory/inventory_adjust">返回样品领料</a></div>
     </div>
     <form class="form-panel" id="adjForm" novalidate onsubmit="Pages.saveAdj(event)">
         <section class="form-section">
@@ -1371,12 +1373,12 @@ Pages.inventoryAdjustForm = function () {
         </section>
         <div class="form-item wide" style="margin-top:16px"><label>备注</label><textarea name="remark" placeholder="调整原因说明"></textarea></div>
         <div class="form-actions sticky-actions">
-            <button class="btn primary" type="submit">保存库存调整</button>
+            <button class="btn primary" type="submit">保存样品领料</button>
             <a class="btn" href="#/inventory/inventory_adjust">返回</a>
         </div>
     </form>`;
 
-    renderShell("inventory_adjust", content, "首页 / 日常作业 / 库存调整");
+    renderShell("inventory_adjust", content, "首页 / 日常作业 / 样品领料");
     Pages.addAdjLine();
     Pages.bindAdjEvents();
 };
@@ -1463,7 +1465,7 @@ Pages.saveAdj = function (e) {
         type: data.type, source_type: data.source_type || "", source_no: data.source_no || "",
         lines, remark: data.remark || "", created_by: DB.currentUser().name
     });
-    toast("库存调整已保存并更新库存", "success");
+    toast("样品领料已保存并更新库存", "success");
     setTimeout(() => { location.hash = "#/inventory/inventory_adjust"; }, 300);
 };
 

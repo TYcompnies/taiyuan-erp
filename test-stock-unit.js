@@ -102,7 +102,7 @@ const check = (cond, msg) => {
     const dashHit = dashText.match(/605900002[^。]*?(袋|箱)/);
     console.log("  仪表板命中:", dashHit ? dashHit[0] : "（未在仪表板文本中找到）");
 
-    console.log("== 4. 库存调整单：异动前/后预览带单位 ==");
+    console.log("== 4. 样品领料单：异动前/后预览带单位 ==");
     await gotoHash("#/inventory/inventory_adjust/create");
     const whSel = page.locator('[name="warehouse_id"]');
     if (await whSel.count()) {

@@ -1,7 +1,7 @@
 /* ============================================================
    全功能遍历测试 test-everywhere.js
    覆盖：全部页面渲染、编辑/详情路由、删除保护、收款/付款、
-   收款/付款、传票作业已移除验证、本位币唯一、库存调整回冲、权限路由、搜索、未知路由
+   收款/付款、传票作业已移除验证、本位币唯一、样品领料回冲、权限路由、搜索、未知路由
    ============================================================ */
 const { chromium } = require("playwright");
 const BASE = (process.env.BASE || "http://127.0.0.1:8902") + "/";
@@ -66,8 +66,8 @@ const BASE = (process.env.BASE || "http://127.0.0.1:8902") + "/";
         ["#/shipments", "出货单"],
         ["#/purchase-orders", "采购单"],
         ["#/purchase-orders/create", "采购单-新增"],
-        ["#/inventory/inventory_adjust", "库存调整"],
-        ["#/inventory/inventory_adjust/create", "库存调整-新增"],
+        ["#/inventory/inventory_adjust", "样品领料"],
+        ["#/inventory/inventory_adjust/create", "样品领料-新增"],
         ["#/sales-returns", "销货退回/折让"],
         ["#/sales-returns/create", "销货退回-新增"],
         ["#/purchase-returns", "采购退回/折让"],
@@ -242,7 +242,7 @@ const BASE = (process.env.BASE || "http://127.0.0.1:8902") + "/";
     // 恢复 CNY 为本位币
     await db(() => { const c = DB.find("currencies", x => x.code === "CNY"); DB.update("currencies", c.id, { is_base: true }); });
 
-    console.log("== 10. 库存调整：创建 → 删除回冲 ==");
+    console.log("== 10. 样品领料：创建 → 删除回冲 ==");
     await page.goto(BASE + "#/inventory/inventory_adjust/create");
     await page.waitForTimeout(300);
     const itId1 = await db(() => DB.list("items")[0].id);
@@ -251,7 +251,7 @@ const BASE = (process.env.BASE || "http://127.0.0.1:8902") + "/";
     await page.selectOption('[name="warehouse_id"]', whId1);
     await page.selectOption('#adjLines tbody tr select', itId1);
     await page.fill('#adjLines tbody tr [name="qty[]"]', "7");
-    await page.click('button:has-text("保存库存调整")');
+    await page.click('button:has-text("保存样品领料")');
     await page.waitForTimeout(800);
     const stockMid = await db(({ wh, it }) => DB.stockOf(wh, it), { wh: whId1, it: itId1 });
     ok("调整后库存 +7", stockMid === stockBefore + 7, stockBefore + " -> " + stockMid);

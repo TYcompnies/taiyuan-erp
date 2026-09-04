@@ -1,5 +1,5 @@
 // ERP 深度业务流程调试测试
-// 模拟真实操作：登录边界 → 销货订单(建/编/校验/出货) → 采购(建/进货) → 库存调整 → 费用 → 传票 → 主档CRUD → 持久化 → 深色模式
+// 模拟真实操作：登录边界 → 销货订单(建/编/校验/出货) → 采购(建/进货) → 样品领料 → 费用 → 传票 → 主档CRUD → 持久化 → 深色模式
 const { chromium } = require('playwright');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8902';
@@ -181,8 +181,8 @@ function check(cond, msg) {
   check(afterRecv.status === 'received', '采购单状态变为已进货');
   check(Math.abs(afterRecv.stock - (afterShip.stock + 30)) < 0.0001, `进货后库存增加 (${afterShip.stock} → ${afterRecv.stock})`);
 
-  // ========== 8. 库存调整 ==========
-  console.log('\n[8] 库存调整 (+5 盘点)');
+  // ========== 8. 样品领料 ==========
+  console.log('\n[8] 样品领料 (+5 盘点)');
   await gotoHash('#/inventory/inventory_adjust/create');
   await page.locator('#adjLines tbody tr').first().locator('[name="item_id[]"]').selectOption({ index: 1 });
   await page.locator('#adjLines tbody tr').first().locator('[name="qty[]"]').fill('5');

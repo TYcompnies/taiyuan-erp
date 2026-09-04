@@ -1,7 +1,7 @@
 /**
  * test-menu-order.js — 菜单顺序专项测试（2026-09-03）
  * 需求：
- *   1) 日常作业组内顺序：采购单 / 销货订单 / 出货单 / 采购退回/折让 / 销货退回/折让 / 库存调整
+ *   1) 日常作业组内顺序：采购单 / 销货订单 / 出货单 / 采购退回/折让 / 销货退回/折让 / 样品领料
  *   2) ERP 组顺序：首页 / 基本资料 / 日常作业 / 进销存账款 / 财务会计 / 商品估价试算 / 报表查询 / 出勤管理 / 系统设置
  * 运行：BASE=<云端或本地 URL> node test-menu-order.js
  */
@@ -54,7 +54,7 @@ async function login(page) {
         });
 
         /* ---------- 2. 日常作业组内顺序 ---------- */
-        await test('G2 日常作业组内顺序 采购单/销货订单/出货单/采购退回折让/销货退回折让/库存调整', async () => {
+        await test('G2 日常作业组内顺序 采购单/销货订单/出货单/采购退回折让/销货退回折让/样品领料', async () => {
             const order = await page.evaluate(() => {
                 const g = Array.from(document.querySelectorAll('.menu-group')).find(grp => {
                     const sp = grp.querySelector('.menu-main span');
@@ -62,7 +62,7 @@ async function login(page) {
                 });
                 return g ? Array.from(g.querySelectorAll('.menu-link')).map(a => a.textContent.trim()) : [];
             });
-            const expected = ['采购单', '销货订单', '出货单', '采购退回/折让', '销货退回/折让', '库存调整'];
+            const expected = ['采购单', '销货订单', '出货单', '采购退回/折让', '销货退回/折让', '样品领料'];
             if (JSON.stringify(order) !== JSON.stringify(expected)) {
                 throw new Error(`实际项序 ${JSON.stringify(order)}`);
             }
@@ -83,7 +83,7 @@ async function login(page) {
                 { t: '出货单', href: '#/shipments' },
                 { t: '采购退回/折让', href: '#/purchase-returns' },
                 { t: '销货退回/折让', href: '#/sales-returns' },
-                { t: '库存调整', href: '#/inventory/inventory_adjust' }
+                { t: '样品领料', href: '#/inventory/inventory_adjust' }
             ];
             if (JSON.stringify(pairs) !== JSON.stringify(expected)) {
                 throw new Error(`实际配对 ${JSON.stringify(pairs)}`);

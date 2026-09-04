@@ -194,8 +194,8 @@ const near = (a, b, eps) => Math.abs(parseFloat(a || 0) - b) < (eps === undefine
   await page.locator('.modal-mask .btn.primary').click();
   await page.waitForTimeout(700);
 
-  // ========== 8. 库存调整：数量输入后异动前/异动后实时预览（回归） ==========
-  console.log('\n[8] 库存调整表单：数量输入后异动前后实时预览（回归验证）');
+  // ========== 8. 样品领料：数量输入后异动前/异动后实时预览（回归） ==========
+  console.log('\n[8] 样品领料表单：数量输入后异动前后实时预览（回归验证）');
   await gotoHash('#/inventory/inventory_adjust/create');
   const adjRow = page.locator('#adjLines tbody tr').first();
   await adjRow.locator('[name="item_id[]"]').selectOption(ids.a);
