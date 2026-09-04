@@ -86,7 +86,7 @@ const check = (cond, msg) => {
     });
     console.log("  库存总览:", JSON.stringify(invCell));
     check(invCell && invCell.unit === "袋", `库存单位列显示「袋」（实际: ${invCell && invCell.unit}）`);
-    check(invCell && /^120/.test(invCell.qty), `目前库存 120 袋（实际: ${invCell && invCell.qty}）`);
+    check(invCell && /^120/.test(invCell.qty), `库存 120 袋（实际: ${invCell && invCell.qty}）`);
 
     console.log("== 3. 仪表板低库存提醒：数字带单位 ==");
     // 安全库存 50，库存 120 > 50，不触发低库存；改用另一商品验证负库存区单位

@@ -85,7 +85,6 @@ function check(cond, msg) {
   console.log('\n[2] 库存总览 TY0001');
   await gotoHash('#/inventory/inventory_overview');
   const ovText = await page.textContent('body');
-  const m = ovText.match(/TY0001[\s\S]{0,600}?目前库存/);
   check(/TY0001/.test(ovText), '库存总览包含 TY0001');
   // 找到 TY0001 所在行文本
   const rowText = await page.evaluate(() => {
@@ -105,7 +104,7 @@ function check(cond, msg) {
     return '';
   });
   console.log('  安全库存 TY0001 行:', sfText.replace(/\s+/g, ' ').slice(0, 300));
-  check(sfText.includes('120'), `安全库存报表目前库存 120`);
+  check(sfText.includes('120'), `安全库存报表总仓库存 120`);
   check(sfText.includes('50'), `安全库存报表安全库存 50`);
 
   // ===== 5. 销货订单（跨月场景：上个月下单，本月出货）=====

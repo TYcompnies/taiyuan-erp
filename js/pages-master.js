@@ -160,7 +160,7 @@ Pages.itemForm = function (id) {
 /* 单位换算实时反向预览
    第一换算：1 [销售单位] = X [库存单位]；1 [采购单位] = Y [库存单位]
    第二换算(最小单位)：1 [销售单位] = X2 [第二库存单位]；1 [采购单位] = Y2 [第二库存单位]
-   总览最小单位换算：由 第二换算 ÷ 第一换算 自动得出（库存总览「第二目前库存」用） */
+   总览最小单位换算：由 第二换算 ÷ 第一换算 自动得出（库存总览「库存(最小单位)」列用） */
 Pages.updateUnitConv = function () {
     const form = document.querySelector("form.form-panel");
     if (!form) return;
