@@ -1294,10 +1294,46 @@ Pages.savePO = function (e, id) {
 /* ============================================================
    样品领料（原库存调整模块，20260904b 改名：仅 UI label 变更，
    collection=inventory_adjusts / 路由 #/inventory/inventory_adjust /
-   字段 type(调整/拆包/组包) / 权限 inventory.view|inventory.adjust 全部保留）
+   字段 type(调整/拆包/组包) / 权限 inventory.view|inventory.adjust 全部保留。
+   20260906a 新增：领用单位下拉（商品可用单位：库存/销售/采购/最小单位），
+   输入领用数量后按换算率自动换算为库存单位异动库存；
+   line 记录 qty=换算后库存单位数量，另存 claim_qty/claim_unit/rate 原录入）
    ============================================================ */
+/* 可领单位与换算率（→ 库存单位）：
+   库存单位 rate=1；销售/采购单位按第一换算；
+   第二库存单位(最小单位) 按第二换算÷第一换算反推（1 库存单位 = f 最小单位） */
+Pages.adjUnitRates = function (it) {
+    if (!it) return [];
+    const n = (v) => { const x = Utils.num(v); return x > 0 ? x : 0; };
+    const s1 = n(it.sales_to_stock), p1 = n(it.purchase_to_stock);
+    const s2 = n(it.sales_to_stock2), p2 = n(it.purchase_to_stock2);
+    let f = 0;
+    if (s1 > 0 && s2 > 0) f = s2 / s1;
+    else if (p1 > 0 && p2 > 0) f = p2 / p1;
+    const list = [];
+    const push = (u, rate, tag) => {
+        if (!u || !(rate > 0)) return;
+        if (list.some(x => x.u === u)) return;
+        list.push({ u: u, rate: rate, tag: tag || "" });
+    };
+    push(it.stock_unit, 1, "");
+    push(it.sales_unit, s1, "销售");
+    push(it.purchase_unit, p1, "采购");
+    if (f > 0) push(it.stock_unit2, 1 / f, "最小单位");
+    return list;
+};
+
 Pages.inventoryAdjust = function () {
     const list = DB.list("inventory_adjusts").sort((a, b) => b.no.localeCompare(a.no));
+    const qtyCell = (l) => {
+        const color = l.qty < 0 ? "var(--danger)" : "var(--green)";
+        const sign = l.qty > 0 ? "+" : "";
+        if (l.claim_unit && l.claim_unit !== l.unit && l.rate && l.rate !== 1) {
+            const cSign = l.claim_qty > 0 ? "+" : "";
+            return `<span style="color:${color}">${cSign}${l.claim_qty} ${h(l.claim_unit)}</span><br><span class="muted" style="font-size:12px">= ${sign}${l.qty} ${h(l.unit || "")}</span>`;
+        }
+        return `<span style="color:${color}">${sign}${l.qty}${l.unit ? " " + h(l.unit) : ""}</span>`;
+    };
     const rows = list.map(a => {
         const wh = DB.get("warehouses", a.warehouse_id);
         return `<tr>
@@ -1307,7 +1343,7 @@ Pages.inventoryAdjust = function () {
             <td>${h(a.source_no || "-")}</td>
             <td>${h(wh ? wh.name : "")}</td>
             <td>${a.lines.map(l => `${h(l.code)} ${h(l.name)}`).join("<br>")}</td>
-            <td class="num">${a.lines.map(l => `<span style="${l.qty < 0 ? "color:var(--danger)" : "color:var(--green)"}">${l.qty > 0 ? "+" : ""}${l.qty}</span>`).join("<br>")}</td>
+            <td class="num">${a.lines.map(qtyCell).join("<br>")}</td>
             <td class="num">${a.lines.map(l => `${l.before} → ${l.after}`).join("<br>")}</td>
             <td>${h(a.created_by)}</td>
             <td>${h(a.created_at.slice(0, 10))}</td>
@@ -1318,7 +1354,7 @@ Pages.inventoryAdjust = function () {
 
     const content = `
     <div class="page-head">
-        <div><h1>样品领料</h1><p>处理盘点差异、拆包/组包等库存异动；异动会即时更新仓库库存。</p></div>
+        <div><h1>样品领料</h1><p>处理盘点差异、拆包/组包等库存异动；可按商品可用单位（如盒、包）领用，系统自动换算为库存单位异动库存。</p></div>
         <div class="head-actions">${can("inventory.adjust") ? `<a class="btn primary" href="#/inventory/inventory_adjust/create">+ 新增样品领料</a>` : ""}</div>
     </div>
     <div class="table-wrap list-scroll">
@@ -1345,7 +1381,7 @@ Pages.deleteAdj = function (id) {
 Pages.inventoryAdjustForm = function () {
     const content = `
     <div class="page-head">
-        <div><h2>样品领料｜新增</h2><p>调整类型：调整（盘点差异）、拆包（大包装拆小包）、组包（小包组合成大包装）。</p></div>
+        <div><h2>样品领料｜新增</h2><p>调整类型：调整（盘点差异）、拆包（大包装拆小包）、组包（小包组合成大包装）。领用数量可按商品可用单位（如盒、包）输入，保存时自动换算为库存单位异动库存。</p></div>
         <div class="actions"><a class="btn" href="#/inventory/inventory_adjust">返回样品领料</a></div>
     </div>
     <form class="form-panel" id="adjForm" novalidate onsubmit="Pages.saveAdj(event)">
@@ -1361,12 +1397,12 @@ Pages.inventoryAdjustForm = function () {
         </section>
         <section class="form-section">
             <div class="bom-lines-head">
-                <div><h3>调整明细</h3><p class="muted">数量正数为入库（增加），负数为出库（减少）。</p></div>
+                <div><h3>调整明细</h3><p class="muted">领用数量正数为入库（增加），负数为出库（减少，领料常用负数）；单位可选商品可用单位（如盒、包），自动换算为库存单位。</p></div>
                 <button class="btn" type="button" onclick="Pages.addAdjLine()">+ 新增明细</button>
             </div>
             <div class="table-wrap detail-scroll">
                 <table class="table bom-lines" id="adjLines">
-                    <thead><tr><th>品号</th><th>品名</th><th class="num">数量(+/-)</th><th>单位</th><th class="num">异动前</th><th class="num">异动后</th><th>明细备注</th><th class="action-col">操作</th></tr></thead>
+                    <thead><tr><th>品号</th><th>品名</th><th class="num">领用数量(+/-)</th><th>领用单位</th><th class="num">异动前</th><th class="num">异动后</th><th>明细备注</th><th class="action-col">操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -1389,8 +1425,8 @@ Pages.addAdjLine = function (itemId) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><input class="item-code" value="" readonly style="width:90px"></td>
         <td><select name="item_id[]" required onchange="Pages.syncAdjItem(this)"><option value="">请选择</option>${itemOptions(itemId)}</select></td>
-        <td><input type="number" step="0.0001" name="qty[]" value="" placeholder="+/-" required style="width:100px"></td>
-        <td><input name="unit[]" value="" style="width:70px"></td>
+        <td><input type="number" step="0.0001" name="qty[]" value="" placeholder="+/-" required style="width:100px" oninput="Pages.updateAdjPreview(this.closest('tr'))"><span class="unit-conv-preview adj-conv" style="white-space:nowrap"></span></td>
+        <td><select name="unit[]" style="width:120px" onchange="Pages.updateAdjPreview(this.closest('tr'))"><option value="">请先选择商品</option></select></td>
         <td class="before-qty num">-</td>
         <td class="after-qty num">-</td>
         <td><input name="line_remark[]" value=""></td>
@@ -1408,8 +1444,24 @@ Pages.syncAdjItem = function (select) {
     const row = select.closest("tr");
     if (!opt) return;
     row.querySelector(".item-code").value = opt.dataset.code || "";
-    row.querySelector('[name="unit[]"]').value = opt.dataset.unit || "";
+    // 填充可领单位下拉（含换算率；默认库存单位）
+    const it = select.value ? DB.get("items", select.value) : null;
+    const units = Pages.adjUnitRates(it);
+    const unitSel = row.querySelector('[name="unit[]"]');
+    if (unitSel) {
+        unitSel.innerHTML = units.length
+            ? units.map((x, i) => `<option value="${h(x.u)}" data-rate="${x.rate}"${i === 0 ? " selected" : ""}>${h(x.u)}${x.tag ? `（${h(x.tag)}）` : ""}</option>`).join("")
+            : `<option value="" data-rate="1">-</option>`;
+    }
     Pages.updateAdjPreview(row);
+};
+
+/* 当前行的领用单位换算率与换算数量（→ 库存单位） */
+Pages.adjRowRate = function (row) {
+    const unitSel = row.querySelector('[name="unit[]"]');
+    const opt = unitSel && unitSel.selectedIndex >= 0 ? unitSel.options[unitSel.selectedIndex] : null;
+    const rate = opt ? (Utils.num(opt.dataset.rate) || 1) : 1;
+    return { rate: rate, unit: opt ? opt.value : "" };
 };
 
 Pages.updateAdjPreview = function (row) {
@@ -1420,8 +1472,16 @@ Pages.updateAdjPreview = function (row) {
     const before = DB.stockOf(whId, sel.value);
     const it = DB.get("items", sel.value);
     const u = it && it.stock_unit ? it.stock_unit : "";
+    const r = Pages.adjRowRate(row);
+    const delta = Utils.round(qty * r.rate, 4);
     row.querySelector(".before-qty").textContent = before + " " + u;
-    row.querySelector(".after-qty").textContent = Utils.round(before + qty, 4) + " " + u;
+    row.querySelector(".after-qty").textContent = Utils.round(before + delta, 4) + " " + u;
+    const hint = row.querySelector(".adj-conv");
+    if (hint) {
+        if (!qty || !r.unit || !u) hint.textContent = "";
+        else if (r.rate === 1 && r.unit === u) hint.textContent = "";
+        else hint.textContent = `换算：${qty} ${r.unit} × ${Utils.round(r.rate, 6)} = ${delta} ${u}`;
+    }
 };
 
 Pages.bindAdjLineEvents = function (row) {
@@ -1444,19 +1504,24 @@ Pages.saveAdj = function (e) {
     let ok = true;
     document.querySelectorAll("#adjLines tbody tr").forEach(row => {
         const sel = row.querySelector('[name="item_id[]"]');
-        const qty = Utils.num(row.querySelector('[name="qty[]"]').value);
+        const claimQty = Utils.num(row.querySelector('[name="qty[]"]').value);
         if (!sel || !sel.value) return;
-        if (qty === 0) { ok = false; return; }
+        if (claimQty === 0) { ok = false; return; }
         const it = DB.get("items", sel.value);
+        const r = Pages.adjRowRate(row);
+        // 领用数量 × 换算率 = 库存单位异动量
+        const qty = Utils.round(claimQty * r.rate, 4);
+        if (qty === 0) { ok = false; return; }
         const before = DB.stockOf(data.warehouse_id, sel.value);
         lines.push({
             item_id: sel.value, code: it.code, name: it.name, qty,
-            unit: row.querySelector('[name="unit[]"]').value || it.stock_unit,
+            unit: it.stock_unit || r.unit,
+            claim_qty: claimQty, claim_unit: r.unit || it.stock_unit, rate: r.rate,
             before, after: Utils.round(before + qty, 4),
             remark: row.querySelector('[name="line_remark[]"]').value || ""
         });
     });
-    if (!ok) { toast("调整数量不可为 0", "error"); return; }
+    if (!ok) { toast("领用数量换算后不可为 0", "error"); return; }
     if (!lines.length) { toast("请至少新增一笔有效的调整明细", "error"); return; }
 
     lines.forEach(l => { DB.addStock(data.warehouse_id, l.item_id, l.qty); });
@@ -1465,7 +1530,7 @@ Pages.saveAdj = function (e) {
         type: data.type, source_type: data.source_type || "", source_no: data.source_no || "",
         lines, remark: data.remark || "", created_by: DB.currentUser().name
     });
-    toast("样品领料已保存并更新库存", "success");
+    toast("样品领料已保存并更新库存（按库存单位换算入账）", "success");
     setTimeout(() => { location.hash = "#/inventory/inventory_adjust"; }, 300);
 };
 
