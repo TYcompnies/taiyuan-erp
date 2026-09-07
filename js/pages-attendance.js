@@ -13,7 +13,6 @@ Pages.attendancePage = function () {
         <div class="attendance-toolbar">
             <div class="attendance-toolbar-info">
                 <strong>智能出勤管理系统（WiFi 打卡）</strong>
-                <span>使用出勤系统账号登录（默认 admin / admin123）· 数据与云端同步设置保持原样不变</span>
             </div>
             <div class="attendance-toolbar-actions">
                 <a class="btn" href="attendance/index.html" target="_blank" title="在新窗口独立打开出勤系统">↗ 新窗口打开</a>
