@@ -749,7 +749,7 @@ Pages.cloudSync = function () {
     const st = CloudSync.loadStatus();
     const bks = CloudSync.backups();
 
-    const fmtTime = (iso) => iso ? iso.replace("T", " ").slice(0, 19) : "-";
+    const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }) : "-"; // 20260907d：ISO(UTC) 转北京时间显示
     const providerBadge = c.provider === "textdb" ? '<span class="badge teal">textdb.online</span>' : '<span class="badge purple">GitHub</span>';
     // 同步空间标识：所有设备/网域必须指向同一空间才会联动（仅显示同步码首尾，便于核对且不泄露完整码）
     const spaceTag = c.provider === "textdb"

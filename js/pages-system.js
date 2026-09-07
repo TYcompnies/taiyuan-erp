@@ -776,21 +776,24 @@ Pages.setProfitRange = function (range) { window.__profitRange = range; Pages.pr
 /* 生成损益期间桶序列（每桶含营收/成本/销退冲减/毛利） */
 function profitSeries(mode, range) {
     const n = parseInt(range, 10) || (mode === "day" ? 30 : 12);
-    const now = new Date();
+    // 20260907d：以北京日期为基准分桶（Utils.today 已固定 Asia/Shanghai），用 UTC 毫秒运算避免设备时区漂移
+    const parts = Utils.today().split("-").map(Number);
+    const by = parts[0], bmo = parts[1], bd = parts[2];
     const buckets = [];
     if (mode === "day") {
+        const base = Date.UTC(by, bmo - 1, bd);
         for (let i = n - 1; i >= 0; i--) {
-            const d = new Date(now);
-            d.setDate(d.getDate() - i);
-            const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+            const d = new Date(base - i * 86400000);
+            const key = d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
             buckets.push({ key, label: key.slice(5), start: key, end: key });
         }
     } else {
         for (let i = n - 1; i >= 0; i--) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const y = d.getFullYear(), m = d.getMonth() + 1;
+            const mIdx = (bmo - 1) - i;
+            const y = by + Math.floor(mIdx / 12);
+            const m = ((mIdx % 12) + 12) % 12 + 1;
             const start = y + "-" + String(m).padStart(2, "0") + "-01";
-            const end = y + "-" + String(m).padStart(2, "0") + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0");
+            const end = y + "-" + String(m).padStart(2, "0") + "-" + String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0");
             buckets.push({ key: y + "-" + String(m).padStart(2, "0"), label: y + "-" + String(m).padStart(2, "0"), start, end });
         }
     }

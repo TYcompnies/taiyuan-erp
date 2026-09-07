@@ -19,16 +19,16 @@ const Utils = {
         return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     },
     today() {
-        const d = new Date();
-        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+        // 20260907d：全系统统一北京时间（Asia/Shanghai），不随设备时区漂移
+        return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
     },
     now() {
-        const d = new Date();
-        return this.today() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + ":" + String(d.getSeconds()).padStart(2, "0");
+        // sv-SE 输出 YYYY-MM-DD HH:mm:ss，固定东八区
+        return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).replace("T", " ");
     },
     monthStart() {
-        const d = new Date();
-        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-01";
+        const p = this.today().split("-");
+        return p[0] + "-" + p[1] + "-01";
     },
     addDays(dateStr, days) {
         const d = new Date(dateStr);
