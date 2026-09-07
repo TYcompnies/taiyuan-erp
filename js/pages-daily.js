@@ -953,11 +953,9 @@ Pages.purchaseOrders = function () {
         const sp = DB.get("suppliers", o.supplier_id);
         const wh = DB.get("warehouses", o.warehouse_id);
         const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (prMap[o.id] || 0), 0);
-        // 20260907a：编辑/删除需 purchase.create；仓管（仅 purchase.view+receive）只能点「进货入库」
+        // 20260907b：编辑/删除需 purchase.create；PO 号人人可点——无编辑权限者（如仓管）进只读查看
         const canEdit = can("purchase.create");
-        const noCell = canEdit
-            ? `<a href="#/purchase-orders/${o.id}/edit"><b>${h(o.no)}</b></a>`
-            : `<b>${h(o.no)}</b>`;
+        const noCell = `<a href="#/purchase-orders/${o.id}/edit"><b>${h(o.no)}</b></a>`;
         return `<tr>
             <td>${noCell}</td>
             <td>${h(o.po_date)}</td>
@@ -1037,12 +1035,15 @@ Pages.purchaseOrderForm = function (id) {
     const o = id ? DB.get("purchase_orders", id) : null;
     if (id && !o) { toast("找不到该采购单", "error"); render(); return; }
     const isEdit = !!o;
+    // 20260907b：无 purchase.create（如仓管）打开编辑页为只读查看——仅能看内容与进货入库
+    const canEdit = can("purchase.create");
+    const readOnly = isEdit && !canEdit;
     const goodsTotal = o ? o.lines.reduce((s, l) => s + Utils.num(l.amount), 0) : 0;
-    const lineRows = o ? o.lines.map(l => poLineRowHtml(l)).join("") : "";
+    const lineRows = o ? o.lines.map(l => poLineRowHtml(l, readOnly)).join("") : "";
 
     const content = `
     <div class="page-head">
-        <div><h2>采购单｜${isEdit ? "编辑" : "新增"}</h2><p>向供应商下单采购商品，进货后库存增加、应付账款形成。</p></div>
+        <div><h2>采购单｜${readOnly ? "查看" : (isEdit ? "编辑" : "新增")}</h2><p>${readOnly ? "只读查看模式：您没有编辑采购单的权限，仅可查看采购内容。" : "向供应商下单采购商品，进货后库存增加、应付账款形成。"}</p></div>
         <div class="actions"><a class="btn" href="#/purchase-orders">返回采购单</a></div>
     </div>
     <form class="form-panel" id="poForm" novalidate onsubmit="Pages.savePO(event, '${id || ""}')">
@@ -1056,6 +1057,14 @@ Pages.purchaseOrderForm = function (id) {
             <div><span>采购金额</span><strong id="poTotal">${fmt(goodsTotal)}</strong></div>
         </div>
 
+        ${readOnly ? `
+        <div class="doc-flow-card">
+            <div>
+                <span class="doc-flow-label">目前流程</span>
+                <strong>只读查看</strong>
+                <p>您没有编辑采购单的权限，仅可查看采购内容；如需进货入库，请点下方「进货入库」或返回采购单列表操作。</p>
+            </div>
+        </div>` : `
         <div class="doc-flow-card editable">
             <div>
                 <span class="doc-flow-label">目前流程</span>
@@ -1066,7 +1075,7 @@ Pages.purchaseOrderForm = function (id) {
                 <li>已进货采购单保存后仍可再编辑，系统自动同步资料，不需删除重建。</li>
                 <li>已发生退回/折让的商品，新数量不得少于累计退回量；采购金额不得低于已冲减应付的合计。</li>
             </ul>
-        </div>
+        </div>`}
 
         <section class="form-section">
             <div class="form-section-title"><h3>采购信息</h3></div>
@@ -1083,8 +1092,8 @@ Pages.purchaseOrderForm = function (id) {
         </section>
         <section class="form-section">
             <div class="bom-lines-head">
-                <div><h3>采购明细</h3>${isEdit && o.status === "received" ? `<p class="muted">已进货采购单仍可新增/移除明细行，保存后自动同步库存与应付。</p>` : ""}</div>
-                <button class="btn" type="button" onclick="Pages.addPOLine()">+ 新增明细</button>
+                <div><h3>采购明细</h3>${!readOnly && isEdit && o.status === "received" ? `<p class="muted">已进货采购单仍可新增/移除明细行，保存后自动同步库存与应付。</p>` : ""}</div>
+                ${readOnly ? "" : `<button class="btn" type="button" onclick="Pages.addPOLine()">+ 新增明细</button>`}
             </div>
             <div class="table-wrap detail-scroll">
                 <table class="table bom-lines" id="poLines">
@@ -1096,26 +1105,34 @@ Pages.purchaseOrderForm = function (id) {
         </section>
         <div class="form-item wide" style="margin-top:16px"><label>备注</label><textarea name="remark">${h(o ? o.remark : "")}</textarea></div>
         <div class="form-actions sticky-actions">
-            <button class="btn primary" type="submit">${isEdit && o.status === "received" ? "保存并同步库存/应付" : "保存采购单"}</button>
+            ${readOnly
+                ? (o.status === "draft" && can("purchase.receive") ? `<button class="btn primary" type="button" onclick="Pages.receivePO('${o.id}')">进货入库</button>` : "")
+                : `<button class="btn primary" type="submit">${isEdit && o.status === "received" ? "保存并同步库存/应付" : "保存采购单"}</button>`}
             <a class="btn" href="#/purchase-orders">返回</a>
         </div>
     </form>`;
 
     renderShell("purchase_orders", content, "首页 / 日常作业 / 采购单");
-    if (!isEdit) Pages.addPOLine();
-    Pages.bindPOEvents();
+    if (readOnly) {
+        // 只读查看：禁用全部输入字段（进货入库按钮保留可用）
+        document.querySelectorAll("#poForm input, #poForm select, #poForm textarea").forEach(el => { el.disabled = true; });
+    } else {
+        if (!isEdit) Pages.addPOLine();
+        Pages.bindPOEvents();
+    }
 };
 
-function poLineRowHtml(l) {
+function poLineRowHtml(l, readOnly) {
+    const dis = readOnly ? " disabled" : "";
     return `<tr>
-        <td><input class="item-code" value="${h(l.code)}" readonly style="width:90px"></td>
-        <td><select name="item_id[]" required onchange="Pages.syncPOItem(this)"><option value="">请选择</option>${itemOptions(l.item_id)}</select></td>
-        <td><input type="number" step="0.0001" name="qty[]" value="${l.qty}" required style="width:90px"></td>
-        <td><input name="unit[]" value="${h(l.unit)}" style="width:70px"></td>
-        <td><input type="number" step="0.0001" name="unit_price[]" value="${l.unit_price}" style="width:110px"></td>
+        <td><input class="item-code" value="${h(l.code)}" readonly style="width:90px"${dis}></td>
+        <td><select name="item_id[]" required${dis} onchange="Pages.syncPOItem(this)"><option value="">请选择</option>${itemOptions(l.item_id)}</select></td>
+        <td><input type="number" step="0.0001" name="qty[]" value="${l.qty}" required style="width:90px"${dis}></td>
+        <td><input name="unit[]" value="${h(l.unit)}" style="width:70px"${dis}></td>
+        <td><input type="number" step="0.0001" name="unit_price[]" value="${l.unit_price}" style="width:110px"${dis}></td>
         <td class="line-amount num" data-v="${Utils.num(l.amount)}">${fmt(l.amount)}</td>
-        <td><input name="line_remark[]" value="${h(l.remark || "")}"></td>
-        <td class="action-col"><button class="link-btn danger" type="button" onclick="Pages.removePOLine(this)">移除</button></td>
+        <td><input name="line_remark[]" value="${h(l.remark || "")}"${dis}></td>
+        <td class="action-col">${readOnly ? "—" : `<button class="link-btn danger" type="button" onclick="Pages.removePOLine(this)">移除</button>`}</td>
     </tr>`;
 }
 

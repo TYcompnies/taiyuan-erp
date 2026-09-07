@@ -448,8 +448,8 @@ function renderDashboard() {
 
     const pendingReceiveHtml = pendingReceive.slice(0, 6).map(o => {
         const sp = DB.get("suppliers", o.supplier_id);
-        // 20260907a：无 purchase.create（如仓管）链接到采购单列表去点「进货入库」，不进编辑页
-        const href = can("purchase.create") ? `#/purchase-orders/${o.id}/edit` : `#/purchase-orders`;
+        // 20260907b：无 purchase.create（如仓管）点待进货采购进只读查看页（内有进货入库按钮）
+        const href = `#/purchase-orders/${o.id}/edit`;
         return `<a href="${href}"><b>${h(o.no)}</b><span>${h(sp ? sp.name : "")}</span><em>${fmt(o.amount)}</em></a>`;
     }).join("") || `<p class="empty" style="padding:14px 18px;color:var(--muted);font-size:12.5px">没有待进货采购单</p>`;
 
@@ -619,7 +619,7 @@ function route(hash) {
     if (routes[key]) {
         const perm = permForPath(key);
         if (perm && !can(perm)) { denyAccess(key); return; }
-        // 20260907a：采购单新增页需 purchase.create（仓管只能进货入库，不能新增/编辑采购单）
+        // 20260907b：采购单新增页需 purchase.create（仓管不能新增采购单；编辑页改为只读查看）
         if (key === "purchase-orders/create" && !can("purchase.create")) { denyAccess(key); return; }
         routes[key](); return;
     }
@@ -640,8 +640,7 @@ function route(hash) {
         if (map[base]) {
             const perm = permForPath(base);
             if (perm && !can(perm)) { denyAccess(base); return; }
-            // 20260907a：采购单编辑路由需 purchase.create（进货后可编辑，但仅限有编辑权限者）
-            if (base === "purchase-orders" && !can("purchase.create")) { denyAccess(base); return; }
+            // 20260907b：采购单编辑路由仅需 purchase.view——无 purchase.create 者（如仓管）进只读查看
             map[base](); return;
         }
     }
