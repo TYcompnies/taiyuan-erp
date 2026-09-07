@@ -345,7 +345,6 @@ function renderLogin(err) {
             <button type="submit">登录系统</button>
         </form>
         <div class="login-err" id="loginErr" style="${err ? "display:block" : ""}">${h(err || "")}</div>
-        <div class="login-hint">默认：admin / admin123</div>
     </div>`;
 }
 
