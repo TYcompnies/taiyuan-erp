@@ -93,12 +93,20 @@ const DB = {
             if (!this._mem || !this._mem.items) {
                 this._mem = { version: 2, seeded: false };
             }
+            // 20260907c：记录迁移前原文——迁移链若改写了数据，说明指纹失配是「版本升级」
+            // 而非用户未上传的改动，需清空 __hash 让首拉按「云端较新」采纳远端资料，
+            // 防止旧设备开屏把旧资料按后推赢推上云端覆盖大家（9/7 资料消失事故根因）
+            const preMig = JSON.stringify(this._mem);
             this.migrate();
             this.purgeAccounting();
             this.migrateAttendance();
             this.migrateProfitReport();
             this.migrateBookkeeping();
             this.migrateQuote();
+            if (JSON.stringify(this._mem) !== preMig && this._mem.__hash) {
+                this._mem.__hash = "";
+                try { localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(this._mem)); } catch (e) { }
+            }
             this._loaded = true;
         } finally {
             this._loading = false;
@@ -212,6 +220,9 @@ const DB = {
             localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(this._mem));
         } catch (e) { /* 存储满时忽略 */ }
         // 云端同步：数据有变动时调度自动上传（防抖，见 sync.js）
+        // 20260907c：载入迁移链（_loading）期间不调度上传——迁移是系统行为而非用户改动，
+        // 抢推会把旧资料按后推赢覆盖云端最新数据；迁移后是否需要同步交由首拉判定
+        if (this._loading) return;
         if (typeof CloudSync !== "undefined" && CloudSync && CloudSync.schedulePush) {
             try { CloudSync.schedulePush(); } catch (e) { /* 同步失败不影响本地 */ }
         }
