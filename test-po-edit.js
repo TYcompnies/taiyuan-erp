@@ -246,6 +246,77 @@ const poState = (page, id) => page.evaluate((oid) => {
             if (v2.wh2 !== 50) throw new Error('跨仓迁移 wh2=' + v2.wh2 + '（期望50）');
         });
 
+        /* ---------- T10 权限（20260907a）：仓管只能点「进货入库」 ---------- */
+        await test('T10 仓管权限：列表仅进货入库，编辑/删除/新增均被拒', async () => {
+            // 10a. admin 建 draft 单（T9 结束时仍是 admin）
+            const po3 = await createPO(page, 'pei1', 10, 10);
+            if (!po3 || po3.status !== 'draft') throw new Error('draft 单建立失败');
+
+            // 10b. 切换仓管账号（clearSession 后整页刷新回登录屏）
+            await page.evaluate(() => DB.clearSession());
+            await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+            await page.waitForSelector('#loginForm input[name="username"]', { timeout: 15000 });
+            await page.fill('input[name="username"]', 'warehouse');
+            await page.fill('input[name="password"]', '123456');
+            await page.click('button[type="submit"]');
+            await page.waitForSelector('.sidebar, nav', { timeout: 15000 });
+            await page.waitForTimeout(600);
+
+            // 10c. 采购单列表：draft 行只有「进货入库」，无「编辑/删除」，PO 号不是链接，无「+ 新增采购单」
+            await page.evaluate(() => { location.hash = '#/purchase-orders'; });
+            await page.waitForTimeout(1000);
+            const ui = await page.evaluate((no) => {
+                const row = Array.from(document.querySelectorAll('table tbody tr')).find(tr => tr.textContent.includes(no));
+                return {
+                    found: !!row,
+                    receive: row ? !!Array.from(row.querySelectorAll('button')).find(b => b.textContent.includes('进货入库')) : false,
+                    edit: row ? !!Array.from(row.querySelectorAll('a')).find(a => a.textContent.trim() === '编辑') : false,
+                    del: row ? !!Array.from(row.querySelectorAll('button')).find(b => b.textContent.trim() === '删除') : false,
+                    noLink: row ? !row.querySelector('td:first-child a') : false,
+                    createBtn: !!Array.from(document.querySelectorAll('.head-actions a')).find(a => a.textContent.includes('新增采购单'))
+                };
+            }, po3.no);
+            if (!ui.found) throw new Error('列表找不到 draft 单 ' + po3.no);
+            if (!ui.receive) throw new Error('仓管应看到「进货入库」按钮');
+            if (ui.edit) throw new Error('仓管不应看到「编辑」按钮');
+            if (ui.del) throw new Error('仓管不应看到「删除」按钮');
+            if (!ui.noLink) throw new Error('仓管 PO 号不应是编辑链接');
+            if (ui.createBtn) throw new Error('仓管不应看到「+ 新增采购单」按钮');
+
+            // 10d. 直连新增页被拒（回仪表板、无表单）
+            await page.evaluate(() => { location.hash = '#/purchase-orders/create'; });
+            await page.waitForTimeout(1000);
+            const deniedCreate = await page.evaluate(() => ({
+                form: !!document.querySelector('#poForm'),
+                dash: document.body.textContent.includes('仪表板')
+            }));
+            if (deniedCreate.form || !deniedCreate.dash) throw new Error('直连新增页未被拒 form=' + deniedCreate.form);
+
+            // 10e. 直连编辑页被拒
+            await page.evaluate((id) => { location.hash = '#/purchase-orders/' + id + '/edit'; }, po3.id);
+            await page.waitForTimeout(1000);
+            const deniedEdit = await page.evaluate(() => ({
+                form: !!document.querySelector('#poForm'),
+                dash: document.body.textContent.includes('仪表板')
+            }));
+            if (deniedEdit.form || !deniedEdit.dash) throw new Error('直连编辑页未被拒 form=' + deniedEdit.form);
+
+            // 10f. 函数级守卫：deletePO 被拒且单据仍在
+            await page.evaluate((id) => Pages.deletePO(id), po3.id);
+            await page.waitForTimeout(300);
+            const still = await page.evaluate((id) => !!DB.get('purchase_orders', id), po3.id);
+            if (!still) throw new Error('deletePO 守卫失效：单被删了');
+
+            // 10g. 仓管点「进货入库」可用：库存+10、状态 received
+            await page.evaluate(() => { location.hash = '#/purchase-orders'; });
+            await page.waitForTimeout(1000);
+            await page.evaluate((id) => Pages.receivePO(id), po3.id);
+            await confirmOk(page);
+            const st3 = await poState(page, po3.id);
+            if (st3.status !== 'received') throw new Error('仓管进货后状态=' + st3.status);
+            if (st3.aStock !== 20) throw new Error('仓管进货后 pei1 wh1 库存=' + st3.aStock + '（期望20=10旧+10新）');
+        });
+
         results.forEach(r => console.log(r));
         console.log(`\n==== test-po-edit 完成：通过 ${pass} / 失败 ${fail} ====`);
     } catch (e) {

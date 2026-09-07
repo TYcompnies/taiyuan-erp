@@ -953,8 +953,13 @@ Pages.purchaseOrders = function () {
         const sp = DB.get("suppliers", o.supplier_id);
         const wh = DB.get("warehouses", o.warehouse_id);
         const unpaid = Math.max(Utils.num(o.amount) - Utils.num(o.paid_amount) - (prMap[o.id] || 0), 0);
+        // 20260907a：编辑/删除需 purchase.create；仓管（仅 purchase.view+receive）只能点「进货入库」
+        const canEdit = can("purchase.create");
+        const noCell = canEdit
+            ? `<a href="#/purchase-orders/${o.id}/edit"><b>${h(o.no)}</b></a>`
+            : `<b>${h(o.no)}</b>`;
         return `<tr>
-            <td><a href="#/purchase-orders/${o.id}/edit"><b>${h(o.no)}</b></a></td>
+            <td>${noCell}</td>
             <td>${h(o.po_date)}</td>
             <td>${h(sp ? sp.name : "")}</td>
             <td>${h(wh ? wh.name : "")}</td>
@@ -964,9 +969,9 @@ Pages.purchaseOrders = function () {
             <td>${poStatusBadge(o.status)}</td>
             <td class="num">${o.status === "received" ? `<a class="link-btn" href="#/purchase-returns/create">退回/折让</a>` : "-"}</td>
             <td class="action-col">
-                <a class="link-btn" href="#/purchase-orders/${o.id}/edit">编辑</a>
+                ${canEdit ? `<a class="link-btn" href="#/purchase-orders/${o.id}/edit">编辑</a>` : ""}
                 ${o.status === "draft" && can("purchase.receive") ? `<button class="link-btn" onclick="Pages.receivePO('${o.id}')">进货入库</button>` : ""}
-                <button class="link-btn danger" onclick="Pages.deletePO('${o.id}')">删除</button>
+                ${canEdit ? `<button class="link-btn danger" onclick="Pages.deletePO('${o.id}')">删除</button>` : ""}
             </td>
         </tr>`;
     }).join("");
@@ -990,6 +995,7 @@ Pages.purchaseOrders = function () {
 };
 
 Pages.deletePO = function (id) {
+    if (!can("purchase.create")) { toast("您没有删除采购单的权限", "error"); return; }
     const o = DB.get("purchase_orders", id);
     if (!o) return;
     // 不受状态/环扣限制，点删除即删（已进货的自动回冲加量库存，与清除采购迁移同口径）
@@ -1009,6 +1015,7 @@ Pages.deletePO = function (id) {
 
 /* ---- 进货入库 ---- */
 Pages.receivePO = function (id) {
+    if (!can("purchase.receive")) { toast("您没有进货入库的权限", "error"); return; }
     const o = DB.get("purchase_orders", id);
     if (!o) return;
     if (o.status !== "draft") { toast("该采购单已进货，请勿重复操作", "error"); return; }
@@ -1191,6 +1198,7 @@ Pages.syncSupplierCurrency = function (select) {
 
 Pages.savePO = function (e, id) {
     e.preventDefault();
+    if (!can("purchase.create")) { toast("您没有新增/编辑采购单的权限", "error"); return; }
     if (window.__saveLock) { toast("正在保存，请稍候…", "error"); return; }
     window.__saveLock = true;
     try {

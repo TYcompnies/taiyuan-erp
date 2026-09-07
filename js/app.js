@@ -448,7 +448,9 @@ function renderDashboard() {
 
     const pendingReceiveHtml = pendingReceive.slice(0, 6).map(o => {
         const sp = DB.get("suppliers", o.supplier_id);
-        return `<a href="#/purchase-orders/${o.id}/edit"><b>${h(o.no)}</b><span>${h(sp ? sp.name : "")}</span><em>${fmt(o.amount)}</em></a>`;
+        // 20260907a：无 purchase.create（如仓管）链接到采购单列表去点「进货入库」，不进编辑页
+        const href = can("purchase.create") ? `#/purchase-orders/${o.id}/edit` : `#/purchase-orders`;
+        return `<a href="${href}"><b>${h(o.no)}</b><span>${h(sp ? sp.name : "")}</span><em>${fmt(o.amount)}</em></a>`;
     }).join("") || `<p class="empty" style="padding:14px 18px;color:var(--muted);font-size:12.5px">没有待进货采购单</p>`;
 
     const lowStockHtml = lowStock.slice(0, 8).map(i =>
@@ -469,7 +471,7 @@ function renderDashboard() {
             <p>把订单、采购、出货、库存与账款串起来检查；有阻挡项先处理，避免上线后资料不好追。</p>
         </div>
         <div class="head-actions">
-            <a class="btn ghost" href="#/purchase-orders/create">新增采购单</a>
+            ${can("purchase.create") ? `<a class="btn ghost" href="#/purchase-orders/create">新增采购单</a>` : ""}
             <a class="btn primary" href="#/sales-orders/create">新增销货订单</a>
             <a class="btn ghost" href="#/inventory/inventory_adjust">拆包/组包</a>
         </div>
@@ -617,6 +619,8 @@ function route(hash) {
     if (routes[key]) {
         const perm = permForPath(key);
         if (perm && !can(perm)) { denyAccess(key); return; }
+        // 20260907a：采购单新增页需 purchase.create（仓管只能进货入库，不能新增/编辑采购单）
+        if (key === "purchase-orders/create" && !can("purchase.create")) { denyAccess(key); return; }
         routes[key](); return;
     }
     const lastSeg = p[p.length - 1];
@@ -636,6 +640,8 @@ function route(hash) {
         if (map[base]) {
             const perm = permForPath(base);
             if (perm && !can(perm)) { denyAccess(base); return; }
+            // 20260907a：采购单编辑路由需 purchase.create（进货后可编辑，但仅限有编辑权限者）
+            if (base === "purchase-orders" && !can("purchase.create")) { denyAccess(base); return; }
             map[base](); return;
         }
     }
