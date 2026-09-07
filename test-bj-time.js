@@ -27,7 +27,7 @@ function bjNow() {
     const ctx = await browser.newContext();
 
     /* ---- 断云：测试不产生任何真实网络副作用 ---- */
-    await ctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r =>
+    await ctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/i, r =>
         r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }));
 
     const page = await ctx.newPage();

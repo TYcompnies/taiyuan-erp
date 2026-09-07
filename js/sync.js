@@ -515,7 +515,7 @@ const CloudSync = {
                 if (manual) {
                     // 手动下载：明确警告本地有未上传改动，下载会丢失这些改动
                     confirmModal(`⚠ 本地有未上传的改动（新增/删除/修改），下载云端会丢失这些改动（会先自动备份）。云端版本：${h(snap.updated_at)} 由 ${h(snap.device)} 更新。仍要下载吗？`, async () => {
-                        await this.applyRemote(snap);
+                        await this.applyRemote(snap, true);
                         this._lastAutoErr = "";
                         toast("云端数据已下载并应用（本地已备份）", "success");
                     }, "下载云端数据");
@@ -539,7 +539,7 @@ const CloudSync = {
             if (manual) {
                 // 手动下载：确认后备份并覆盖
                 confirmModal(`云端版本较新（${h(snap.updated_at)} 由 ${h(snap.device)} 更新）。下载将覆盖本地数据，系统会先自动备份当前数据，可随时恢复。确定继续吗？`, async () => {
-                    await this.applyRemote(snap);
+                    await this.applyRemote(snap, true);
                     this._lastAutoErr = "";
                     toast("云端数据已下载并应用（本地已备份）", "success");
                 }, "下载云端数据");
@@ -566,7 +566,9 @@ const CloudSync = {
         const cols = ["items", "sales_orders", "shipments", "purchase_orders", "inventory_adjusts", "sales_returns", "purchase_returns"];
         return cols.every(c => !(DB._mem[c] || []).length);
     },
-    async applyRemote(snap) {
+    async applyRemote(snap, silent) {
+        // 0. 20260907e：套用前记录本地现有销货订单 id 集合——套用后出现的新单=他机新增（自动同步提醒依据）
+        const prevSo = this._soIdSet(DB._mem);
         // 1. 备份当前本地数据（保有原有资料）
         this.backupLocal("下载云端覆盖前自动备份");
         // 2. 应用远端数据（保留本地 __rev/__device 对齐远端版本）
@@ -590,6 +592,67 @@ const CloudSync = {
         } finally {
             this._applying = false;
         }
+        // 20260907e：套用远端数据后，若出现本地原先没有的销货订单（他机/他标签新增并已同步到达）→ 提示音+toast；
+        // 手动下载（silent=true）与恢复备份路径不打扰，本机自己建的订单不会经过本函数
+        this._alertNewSO(prevSo, silent);
+    },
+
+    /* ---------- 新销货订单到达提醒（20260907e） ---------- */
+    _soIdSet(mem) {
+        const s = new Set();
+        const arr = (mem && mem.sales_orders) || [];
+        for (const o of arr) if (o && o.id) s.add(o.id);
+        return s;
+    },
+    _alertNewSO(prev, silent) {
+        if (silent || this._applying) return;
+        const added = [];
+        for (const o of (DB._mem && DB._mem.sales_orders) || []) {
+            if (o && o.id && !prev.has(o.id)) added.push(o);
+        }
+        if (!added.length) return;
+        // 会话内已提示过的订单不重复提醒（防 storage 事件与轮询双路径重复响）
+        this._alertedSo = this._alertedSo || new Set();
+        const fresh = added.filter(o => !this._alertedSo.has(o.id));
+        if (!fresh.length) return;
+        fresh.forEach(o => this._alertedSo.add(o.id));
+        const names = fresh.slice(0, 3).map(o => o.no).join("、");
+        try { this.playNewOrderChime(); } catch (e) { /* 音效失败不影响数据 */ }
+        if (typeof toast === "function") {
+            toast("🔔 收到新销货订单 " + fresh.length + " 笔（" + names + (fresh.length > 3 ? " 等" : "") + "）", "success");
+        }
+    },
+    // 提示音：Web Audio 合成「叮咚」双音，无需任何音频文件
+    playNewOrderChime() {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!this._audioCtx) {
+            this._audioCtx = new AC();
+            // 浏览器自动播放策略：首次点击/按键后解锁，解锁后后续同步到达即可出声
+            const unlock = () => { if (this._audioCtx && this._audioCtx.state === "suspended") this._audioCtx.resume().catch(() => { }); };
+            document.addEventListener("pointerdown", unlock);
+            document.addEventListener("keydown", unlock);
+            document.addEventListener("touchstart", unlock);
+        }
+        const ctx = this._audioCtx;
+        const play = () => {
+            const t0 = ctx.currentTime + 0.02;
+            const notes = [[880, 0, 0.28], [587.33, 0.16, 0.42]]; // 叮(高)→咚(低)
+            notes.forEach(([f, dt, len]) => {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.type = "sine";
+                o.frequency.value = f;
+                g.gain.setValueAtTime(0.0001, t0 + dt);
+                g.gain.exponentialRampToValueAtTime(0.22, t0 + dt + 0.025);
+                g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + len);
+                o.connect(g);
+                g.connect(ctx.destination);
+                o.start(t0 + dt);
+                o.stop(t0 + dt + len + 0.05);
+            });
+        };
+        if (ctx.state === "suspended") { ctx.resume().then(play).catch(() => { }); }
+        else play();
     },
 
     /* ---------- 本地备份 ---------- */
@@ -684,9 +747,11 @@ const CloudSync = {
             if (this._applying) return;
             if (e.key === "taiyuan_erp_data_v1" && e.newValue) {
                 try {
+                    const prevSo = this._soIdSet(DB._mem); // 20260907e：记录写入前的订单集合，检测他标签新增订单
                     DB._mem = JSON.parse(e.newValue);
                     this._pendingPush = false; // 已采纳其他标签页的数据，由该标签负责上传
                     if (typeof render === "function") render();
+                    this._alertNewSO(prevSo, false);
                 } catch (err) { /* 数据格式异常忽略 */ }
             }
         });

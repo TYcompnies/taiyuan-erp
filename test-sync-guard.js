@@ -43,7 +43,7 @@ async function buildEncSnapshot(payload, rev) {
     /* ---- 断云：textdb / GitHub 全拦截。记录 push 次数，GET 可注入内存快照 ---- */
     let pushCount = 0;
     let cloudSnapshot = null; // null = 云端无数据（key not found）
-    await ctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, async r => {
+    await ctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/i, async r => {
         const url = r.request().url();
         if (url.includes('github')) return r.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
         if (r.request().method() === 'POST') { pushCount++; return r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }); }

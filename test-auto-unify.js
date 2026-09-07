@@ -65,7 +65,7 @@ async function state() {
     const ctx = await browser.newContext();
     page = await ctx.newPage();
     // 断云：textdb / GitHub 全部拦截并模拟「云端无数据」，测试无真实网络副作用
-    await ctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => {
+    await ctx.route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/i, r => {
         if (r.request().url().includes('github')) return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
         return r.request().method() === 'POST'
             ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' })
