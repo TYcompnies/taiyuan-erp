@@ -103,6 +103,7 @@ const DB = {
             this.migrateProfitReport();
             this.migrateBookkeeping();
             this.migrateQuote();
+            this.migrateSoConfirm();
             if (JSON.stringify(this._mem) !== preMig && this._mem.__hash) {
                 this._mem.__hash = "";
                 try { localStorage.setItem("taiyuan_erp_data_v1", JSON.stringify(this._mem)); } catch (e) { }
@@ -166,6 +167,30 @@ const DB = {
             if (perms.includes("finance.quote")) return;
             if (perms.includes("sales.create") || perms.includes("finance.bookkeeping")) {
                 perms.push("finance.quote");
+                dirty = true;
+            }
+        });
+        if (dirty) this.flush();
+    },
+
+    /* 销货订单「确认收到」一次性迁移（2026-09-07 v20260907f）：为功能上线前就存在的未出货订单
+       补上 received_at 时间戳，一律视为已确认收到——旧资料不受新流程门禁影响（确定性幂等）。
+
+       执行时机 = 每台设备「功能首次启用后的第一次载入」，由本地标记 taiyuan_erp_so_confirm_v1
+       守卫（标记存独立 localStorage 键、不入同步负载）：之后的任何载入/云端套用都不再自动补章，
+       否则会出现两个错误——(1) 重启后把用户故意不确认的新订单误判为旧单补章，提醒永不生效；
+       (2) 无关设备推送触发整包套用时，把「待确认」订单静默补章，违背「直到点选确认提示才消失」。
+       本机新增订单在保存时即写入 received_at（建单人已看到订单），远端同步到达的新订单无
+       received_at → 亮红点徽章并提示确认，直到点选「确认收到订单」为止。 */
+    migrateSoConfirm() {
+        if (!this._mem) return;
+        try { if (localStorage.getItem("taiyuan_erp_so_confirm_v1")) return; } catch (e) { return; }
+        try { localStorage.setItem("taiyuan_erp_so_confirm_v1", "1"); } catch (e) { /* 忽略 */ }
+        let dirty = false;
+        const stamp = Utils.now();
+        (this._mem.sales_orders || []).forEach(o => {
+            if (o && o.status === "draft" && !o.received_at) {
+                o.received_at = stamp;
                 dirty = true;
             }
         });

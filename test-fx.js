@@ -83,6 +83,7 @@ async function db(page, fn, arg) { return page.evaluate(fn, arg); }
             const so = DB.insert('sales_orders', {
                 no: 'SO-FX-001', customer_id: c.id, customer_name: c.name,
                 order_date: '2026-08-21', status: 'draft', currency: 'USD',
+                received_at: '2026-08-21 09:00:00', // v20260907f：已确认收到（测试直插绕过确认门禁）
                 lines: [{ item_id: 'it_fx1', code: 'FX-001', name: '外币测试商品', qty: 6, unit: '个', unit_price: 20, amount: 120 }],
                 invoice_amount: 120, received_amount: 0, payment_status: 'unpaid'
             });

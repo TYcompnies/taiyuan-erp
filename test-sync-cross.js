@@ -46,7 +46,8 @@ async function login(page) {
                 no: 'SO-X-001', customer_id: c.id, customer_name: c.name, order_date: '2026-08-21',
                 status: 'draft', currency: 'CNY',
                 lines: [{ item_id: 'it_x1', code: 'X-001', name: '跨设备同步商品', qty: 3, unit: '个', unit_price: 20, amount: 60 }],
-                invoice_amount: 60, received_amount: 0, payment_status: 'unpaid'
+                invoice_amount: 60, received_amount: 0, payment_status: 'unpaid',
+                received_at: '2026-08-21 09:00:00' // 直接落库测试单自带已确认标记，X5 直接出货才能过门禁
             });
             DB.flush();
             DB.addStock(DB.list('warehouses')[0].id, 'it_x1', 100);

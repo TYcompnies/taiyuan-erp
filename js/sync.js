@@ -21,6 +21,8 @@ const CloudSync = {
     BACKUP_KEEP: 5,
     PULL_INTERVAL: 12000,
     FETCH_TIMEOUT: 15000,      // 弱网/跨网络下 fetch 超时（毫秒）：快速失败并转入备用通道，避免同步卡死
+    REMIND_DELAY: 120000,      // v20260907f：待确认收到订单的重复提示音间隔（每 2 分钟一次）
+    REMIND_MAX: 3,             // v20260907f：重复提示最多共 3 次
 
     // 内置默认同步配置：任何设备/浏览器/网域首次打开时自动启用，
     // 无需手动输入同步码或口令即可跨设备自动同步（可随时在云端同步页修改并保存覆盖）。
@@ -42,6 +44,8 @@ const CloudSync = {
     _started: false,
     _pendingPush: false,  // 本地有未上传的改动（重要：自动下载遇到它时先推本地，防止手机删除被云端旧数据覆盖还原）
     _lastAutoErr: "",  // 自动同步失败去重（同一错误只 toast 一次，变化或恢复后重置）
+    _remindTimer: null,    // v20260907f：待确认订单重复提示定时器
+    _remindCount: 0,       // v20260907f：已提示次数（达 REMIND_MAX 停止）
 
     /* ---------- 配置 ---------- */
     defaults() {
@@ -621,6 +625,10 @@ const CloudSync = {
         if (typeof toast === "function") {
             toast("🔔 收到新销货订单 " + fresh.length + " 笔（" + names + (fresh.length > 3 ? " 等" : "") + "）", "success");
         }
+        // v20260907f：新订单若需「确认收到」→ 启动每 2 分钟一次的重复提示链（直到全部确认）
+        if (fresh.some(o => this._needsConfirmSo(o))) {
+            try { this.startReminderCycle(true); } catch (e) { /* 提醒链失败不影响主流程 */ }
+        }
     },
     // 提示音：Web Audio 合成「叮咚」双音，无需任何音频文件
     playNewOrderChime() {
@@ -653,6 +661,42 @@ const CloudSync = {
         };
         if (ctx.state === "suspended") { ctx.resume().then(play).catch(() => { }); }
         else play();
+    },
+
+    /* ---------- 待确认收到订单重复提醒（v20260907f） ----------
+       若仍有未点选「确认收到订单」的销货订单，每 2 分钟响一次提示音并 toast，
+       最多共 3 次（REMIND_MAX）；全部确认后（Pages.confirmReceived 调用
+       stopReminderCycle）或已达上限即停止。中途再有新订单到达会重置计数重新提醒。 */
+    _needsConfirmSo(o) {
+        return !!(o && o.status === "draft" && !o.received_at);
+    },
+    _pendingSoCount() {
+        try { return ((DB._mem && DB._mem.sales_orders) || []).filter(o => this._needsConfirmSo(o)).length; }
+        catch (e) { return 0; }
+    },
+    stopReminderCycle() {
+        if (this._remindTimer) { clearTimeout(this._remindTimer); this._remindTimer = null; }
+        this._remindCount = 0;
+    },
+    startReminderCycle(reset) {
+        if (reset) this._remindCount = 0;
+        if (this._remindTimer) return;                     // 已有定时器在跑，等待下一轮
+        if (this._remindCount >= this.REMIND_MAX) return;  // 已达 3 次上限
+        if (this._pendingSoCount() <= 0) return;           // 无可提醒订单
+        this._remindTimer = setTimeout(() => {
+            this._remindTimer = null;
+            this._remindCount++;
+            const left = this._pendingSoCount();
+            if (left <= 0 || this._remindCount > this.REMIND_MAX) { this.stopReminderCycle(); return; }
+            try { this.playNewOrderChime(); } catch (e) { /* 音效失败不影响提醒链 */ }
+            if (typeof toast === "function") toast("🔔 还有 " + left + " 笔销货订单未确认收到，请点选「确认收到订单」", "info");
+            this.startReminderCycle(false);                // 武装下一轮（2 分钟后）
+        }, this.REMIND_DELAY);
+    },
+    // 启动自动同步时若有遗留待确认订单，重启提醒链（覆盖「上次会话未确认就关掉」跨重启场景）
+    kickStartupReminder() {
+        if (this._pendingSoCount() <= 0) return;
+        try { this.startReminderCycle(true); } catch (e) { /* 忽略 */ }
     },
 
     /* ---------- 本地备份 ---------- */
@@ -799,6 +843,8 @@ const CloudSync = {
         this._bindActivity();
         // 登录后首拉（跨设备/跨 IP 打开时自动获取最新数据）
         setTimeout(() => { this.pull(false).catch(() => { }); }, 1500);
+        // v20260907f：启动时若有上次会话遗留的待确认订单，立即武装重复提示链
+        this.kickStartupReminder();
         this._pullTimer = setInterval(() => {
             if (document.hidden) return;          // 标签隐藏时跳过，可见时由 visibilitychange 补拉
             this.pull(false).catch(() => { });

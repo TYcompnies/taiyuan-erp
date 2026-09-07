@@ -82,6 +82,30 @@ function calcOrderTotals(goodsTotal, fees, taxType, priceMode, taxRate, settleme
 /* ============================================================
    销货订单
    ============================================================ */
+/* v20260907f：确认收到订单——新订单须点选「确认收到」后才能出货。
+   soNeedsConfirm/soStatusBadgeFull/unconfirmedSoCount 定义于 app.js。 */
+function canConfirmSo(o) {
+    // 能出货的角色（仓管/管理者/系统管理员）即可点选确认收到
+    return !!o && can("sales.ship");
+}
+Pages.confirmReceived = function (id) {
+    const o = DB.get("sales_orders", id);
+    if (!o) return;
+    if (!soNeedsConfirm(o)) { toast("该订单无需确认或已确认收到", "error"); return; }
+    // v20260907f：与出货同权限——仅有出货权限的角色（仓管/管理者/系统管理员）可点选确认收到
+    if (!canConfirmSo(o)) { toast("您没有权限确认收到订单（需出货权限）", "error"); return; }
+    confirmModal(`确认已收到销货订单 ${o.no} 吗？确认后才能继续出货作业。`, () => {
+        DB.update("sales_orders", o.id, { received_at: Utils.now() });
+        toast(`订单 ${o.no} 已确认收到`, "success");
+        // 已无待确认订单 → 停止每 2 分钟一次的重复提示音
+        if (typeof CloudSync !== "undefined" && CloudSync && CloudSync.stopReminderCycle
+            && !DB.list("sales_orders").some(x => soNeedsConfirm(x))) {
+            CloudSync.stopReminderCycle();
+        }
+        render();
+    }, "确认收到订单", "确认收到");
+};
+
 Pages.salesOrders = function () {
     const orders = DB.list("sales_orders").sort((a, b) => b.no.localeCompare(a.no));
     const rows = orders.map(o => {
@@ -99,7 +123,7 @@ Pages.salesOrders = function () {
             <td class="num">${fmt(o.shipping_fee + o.platform_fee + o.payment_fee + o.other_fee)}</td>
             <td class="num">${fmt(o.tax_amount)}</td>
             <td class="num">${fmt(o.net_receipt)}</td>
-            <td>${soStatusBadge(o.status)}${shipRow ? `<span style="display:block;font-size:11.5px;color:var(--muted)">${h(shipDate)}</span>` : ""}</td>
+            <td>${soStatusBadgeFull(o)}${shipRow ? `<span style="display:block;font-size:11.5px;color:var(--muted)">${h(shipDate)}</span>` : ""}</td>
             <td>${o.payment_status === "paid" ? badge("已收款") : o.payment_status === "partial" ? badge("部分收款") : badge("未收款")}</td>
             <td>${h(o.logistics_method || "-")}</td>
             <td>${o.invoice_status ? badge(o.invoice_status) : '-'}</td>
@@ -107,7 +131,8 @@ Pages.salesOrders = function () {
                 <a class="link-btn" href="#/sales-orders/${o.id}">查看</a>
                 <a class="link-btn" href="#/sales-orders/${o.id}/edit">编辑</a>
                 <button class="link-btn" onclick="Pages.printSalesOrder('${o.id}')">打印</button>
-                ${o.status === "draft" && can("sales.ship") ? `<button class="link-btn" onclick="Pages.shipOrder('${o.id}')">出货</button>` : ""}
+                ${soNeedsConfirm(o) && canConfirmSo(o) ? `<button class="link-btn warn" onclick="Pages.confirmReceived('${o.id}')">确认收到</button>` : ""}
+                ${o.status === "draft" && !soNeedsConfirm(o) && can("sales.ship") ? `<button class="link-btn" onclick="Pages.shipOrder('${o.id}')">出货</button>` : ""}
                 <button class="link-btn danger" onclick="Pages.deleteSalesOrder('${o.id}')">删除</button>
             </td>
         </tr>`;
@@ -125,7 +150,7 @@ Pages.salesOrders = function () {
         <div class="search"><input id="soSearch" placeholder="搜索单号/客户/平台单号..." oninput="Pages.soSearch()"></div>
         <div class="filters">
             <select id="soStatusFilter" onchange="Pages.soSearch()">
-                <option value="">全部状态</option><option value="draft">未出货</option><option value="shipped">已出货</option>
+                <option value="">全部状态</option><option value="draft">未出货</option><option value="unconfirmed">待确认收到</option><option value="shipped">已出货</option>
             </select>
             <select id="soChannelFilter" onchange="Pages.soSearch()">
                 <option value="">全部来源</option>${channelOptions("").split("</option>").map(x => x.replace(/selected/g, "")).join("</option>")}
@@ -153,7 +178,7 @@ Pages.soSearch = function () {
     const rows = DB.list("sales_orders").sort((a, b) => b.no.localeCompare(a.no)).filter(o => {
         const cu = DB.get("customers", o.customer_id);
         const txt = (o.no + " " + (cu ? cu.name : "") + " " + (o.platform_no || "")).toLowerCase();
-        return (!q || txt.indexOf(q) >= 0) && (!st || o.status === st) && (!ch || o.channel === ch);
+        return (!q || txt.indexOf(q) >= 0) && (!st || (st === "unconfirmed" ? soNeedsConfirm(o) : o.status === st)) && (!ch || o.channel === ch);
     });
     const body = document.getElementById("soBody");
     if (!body) return;
@@ -169,7 +194,7 @@ Pages.soSearch = function () {
             <td class="num">${fmt(o.shipping_fee + o.platform_fee + o.payment_fee + o.other_fee)}</td>
             <td class="num">${fmt(o.tax_amount)}</td>
             <td class="num">${fmt(o.net_receipt)}</td>
-            <td>${soStatusBadge(o.status)}</td>
+            <td>${soStatusBadgeFull(o)}</td>
             <td>${o.payment_status === "paid" ? badge("已收款") : o.payment_status === "partial" ? badge("部分收款") : badge("未收款")}</td>
             <td>${h(o.logistics_method || "-")}</td>
             <td>${o.invoice_status ? badge(o.invoice_status) : '-'}</td>
@@ -177,7 +202,8 @@ Pages.soSearch = function () {
                 <a class="link-btn" href="#/sales-orders/${o.id}">查看</a>
                 <a class="link-btn" href="#/sales-orders/${o.id}/edit">编辑</a>
                 <button class="link-btn" onclick="Pages.printSalesOrder('${o.id}')">打印</button>
-                ${o.status === "draft" && can("sales.ship") ? `<button class="link-btn" onclick="Pages.shipOrder('${o.id}')">出货</button>` : ""}
+                ${soNeedsConfirm(o) && canConfirmSo(o) ? `<button class="link-btn warn" onclick="Pages.confirmReceived('${o.id}')">确认收到</button>` : ""}
+                ${o.status === "draft" && !soNeedsConfirm(o) && can("sales.ship") ? `<button class="link-btn" onclick="Pages.shipOrder('${o.id}')">出货</button>` : ""}
                 <button class="link-btn danger" onclick="Pages.deleteSalesOrder('${o.id}')">删除</button>
             </td>
         </tr>`;
@@ -208,8 +234,9 @@ Pages.salesOrderDetail = function (id) {
     const content = `
     <div class="page-head">
         <div><h1>销货订单｜${h(o.no)}</h1>
-        <p>订单日期 ${h(o.order_date)} ｜ ${h(o.channel)}${o.platform_no ? ` ｜ 平台单号 ${h(o.platform_no)}` : ""} ｜ ${o.status === "shipped" ? "已出货" : "未出货"}</p></div>
+        <p>订单日期 ${h(o.order_date)} ｜ ${h(o.channel)}${o.platform_no ? ` ｜ 平台单号 ${h(o.platform_no)}` : ""} ｜ ${soNeedsConfirm(o) ? "未出货（待确认收到）" : (o.status === "shipped" ? "已出货" : "未出货")}</p></div>
         <div class="head-actions">
+            ${soNeedsConfirm(o) && canConfirmSo(o) ? `<button class="btn primary" style="background:#d97706;border-color:#d97706" onclick="Pages.confirmReceived('${o.id}')">✓ 确认收到订单</button>` : ""}
             <button class="btn" onclick="Pages.printSalesOrder('${o.id}')">🖨 打印</button>
             <a class="btn ghost" href="#/sales-orders/${o.id}/edit">编辑</a>
             <a class="btn" href="#/sales-orders">返回列表</a>
@@ -225,7 +252,13 @@ Pages.salesOrderDetail = function (id) {
         <div><span>物流单号</span><strong>${h(o.shipment_no || "-")}</strong></div>
         <div><span>收款状态</span><strong>${o.payment_status === "paid" ? badge("已收款") : o.payment_status === "partial" ? badge("部分收款") : badge("未收款")}</strong></div>
         <div><span>发票状态</span><strong>${o.invoice_status ? badge(o.invoice_status) : '-'}</strong></div>
+        <div><span>收到确认</span><strong>${soNeedsConfirm(o) ? `<span class="badge red">待确认收到</span>` : (o.received_at ? `<span class="badge green">已确认收到</span><span style="display:block;font-size:11.5px;color:var(--muted)">${h(o.received_at)}</span>` : '-')}</strong></div>
     </div>
+    ${soNeedsConfirm(o) ? `<div class="doc-flow-card pending" style="margin-top:16px">
+        <div><span class="doc-flow-label">待确认收到</span>
+        <strong>此订单尚未点选「确认收到订单」</strong>
+        <p>确认后才能进行出货作业；新订单提醒（菜单红点数字与提示音）会持续到点选确认后才会消失。</p></div>
+    </div>` : ""}
     <div class="table-wrap list-scroll">
         <table class="table">
             <thead><tr><th>品号</th><th>品名</th><th class="num">数量</th><th>单位</th><th class="num">单价</th><th class="num">金额</th><th>备注</th></tr></thead>
@@ -355,6 +388,7 @@ Pages.printShipment = function (id) {
 Pages.shipOrder = function (id) {
     const o = DB.get("sales_orders", id);
     if (!o) return;
+    if (soNeedsConfirm(o)) { toast(`订单 ${o.no} 尚未点选「确认收到订单」，请先确认后才能出货`, "error"); return; } // v20260907f 门禁
     const whOpts = warehouseOptions("");
     const mask = document.createElement("div");
     mask.className = "modal-mask";
@@ -379,6 +413,7 @@ Pages.doShip = function (id) {
     const o = DB.get("sales_orders", id);
     if (!o) return;
     if (o.status !== "draft") { toast("该订单已出货，请勿重复操作", "error"); return; }
+    if (soNeedsConfirm(o)) { toast(`订单 ${o.no} 尚未点选「确认收到订单」，请先确认后才能出货`, "error"); return; } // v20260907f 门禁（双保险）
     const whId = document.getElementById("shipWh").value;
     const log = document.getElementById("shipLog").value;
     const shipNo = document.getElementById("shipNo").value;
@@ -455,7 +490,7 @@ Pages.salesOrderForm = function (id) {
 
         <div class="order-summary-bar">
             <div><span>订单单号</span><strong>${isEdit ? h(o.no) : "保存后依订单日期自动产生"}</strong></div>
-            <div><span>出货状态</span><strong id="soStatusText">${isEdit ? (o.status === "shipped" ? "已出货" : o.status === "cancelled" ? "已取消" : "未出货") : "未出货"}</strong></div>
+            <div><span>出货状态</span><strong id="soStatusText">${isEdit ? (o.status === "shipped" ? "已出货" : o.status === "cancelled" ? "已取消" : soNeedsConfirm(o) ? "待确认收到" : "未出货") : "未出货"}</strong></div>
             <div><span>商品小计</span><strong id="salesGoodsTotal">${fmt(goodsTotal)}</strong></div>
             <div><span>未税销售额</span><strong id="taxableSummary">${fmt(o ? o.taxable_amount : 0)}</strong></div>
             <div><span>应收总额</span><strong id="salesSummaryTotal">${fmt(o ? o.invoice_amount : 0)}</strong></div>
@@ -465,8 +500,8 @@ Pages.salesOrderForm = function (id) {
         <div class="doc-flow-card editable">
             <div>
                 <span class="doc-flow-label">目前流程</span>
-                <strong>${isEdit && o.status === "shipped" ? "已出货，订单内容已锁定" : "未出货，可调整订单内容并执行出货扣库"}</strong>
-                <p>${isEdit && o.status === "shipped" ? "该订单已完成出货，库存已扣减并形成应收，如需修改请使用退回/折让流程。" : "确认订单内容后，可在列表页点击「出货」选择仓库，系统会扣库存、锁定成本并建立出货单。"}</p>
+                <strong>${isEdit && o.status === "shipped" ? "已出货，订单内容已锁定" : (isEdit && soNeedsConfirm(o) ? "待确认收到，确认后才能出货" : "未出货，可调整订单内容并执行出货扣库")}</strong>
+                <p>${isEdit && o.status === "shipped" ? "该订单已完成出货，库存已扣减并形成应收，如需修改请使用退回/折让流程。" : (isEdit && soNeedsConfirm(o) ? "该订单为远端新增尚未确认收到，请先在列表或详情页点选「确认收到订单」，确认后才能出货扣库。" : "确认订单内容后，可在列表页点击「出货」选择仓库，系统会扣库存、锁定成本并建立出货单。")}</p>
             </div>
             <ul>
                 <li>平台或散客订单可使用 WALKIN 客户，收件人会显示在出货单上。</li>
@@ -773,6 +808,9 @@ Pages.saveSalesOrder = function (e, id) {
         invoice_date: data.invoice_date || "", invoice_status: data.invoice_status || "未开",
         lines, remark: data.remark || "", created_by: DB.currentUser().name
     };
+    // v20260907f：本机新增订单即视为「已确认收到」（建单人已看到订单内容，不进入待确认提醒）；
+    // 远端同步进来的新订单无 received_at，会亮红点并提示确认。
+    if (!id) payload.received_at = Utils.now();
 
     if (id) {
         DB.update("sales_orders", id, payload);
@@ -840,8 +878,15 @@ Pages.shipments = function () {
 
 /* ---- 手动新增出货单：选择未出货订单后进入出货流程 ---- */
 Pages.newShipment = function () {
-    const drafts = DB.list("sales_orders").filter(o => o.status === "draft");
-    if (!drafts.length) { toast("没有未出货的销货订单，请先新增销货订单", "error"); return; }
+    const allDraft = DB.list("sales_orders").filter(o => o.status === "draft");
+    // v20260907f 门禁：待确认收到的订单不能出现在出货选择清单
+    const drafts = allDraft.filter(o => !soNeedsConfirm(o));
+    const pend = allDraft.length - drafts.length;
+    if (!drafts.length) {
+        if (pend > 0) toast(`还有 ${pend} 笔销货订单未确认收到，请先点选「确认收到订单」后才能出货`, "error");
+        else toast("没有未出货的销货订单，请先新增销货订单", "error");
+        return;
+    }
     const opts = drafts.map(o => {
         const cu = DB.get("customers", o.customer_id);
         return `<option value="${o.id}">${h(o.no)} - ${h(cu ? cu.name : "")} - ${fmt(o.invoice_amount)}</option>`;
@@ -851,8 +896,8 @@ Pages.newShipment = function () {
     mask.innerHTML = `<div class="modal" style="max-width:440px">
         <div class="modal-head"><h3>新增出货单</h3><button class="icon-btn" onclick="this.closest('.modal-mask').remove()">✕</button></div>
         <div class="modal-body">
-            <div class="form-item"><label>选择销货订单 <b>*</b></label><select id="shipOrderSel"><option value="">请选择未出货订单</option>${opts}</select></div>
-            <p class="stat-line" style="margin-top:8px">选择后进入出货流程：指定仓库与物流，系统扣减库存并建立出货单。</p>
+            <div class="form-item"><label>选择销货订单 <b>*</b></label><select id="shipOrderSel"><option value="">请选择已确认收到的订单</option>${opts}</select></div>
+            <p class="stat-line" style="margin-top:8px">选择后进入出货流程：指定仓库与物流，系统扣减库存并建立出货单。${pend > 0 ? `<span style="color:var(--danger)">另有 ${pend} 笔新订单待确认收到，确认后才能出货。</span>` : ""}</p>
         </div>
         <div class="modal-foot">
             <button class="btn" onclick="this.closest('.modal-mask').remove()">取消</button>

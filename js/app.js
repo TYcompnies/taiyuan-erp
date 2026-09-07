@@ -123,7 +123,7 @@ function toast(msg, type) {
 }
 
 /* ---------------- 确认弹窗 ---------------- */
-function confirmModal(msg, onOk, title) {
+function confirmModal(msg, onOk, title, okText) {
     const mask = document.createElement("div");
     mask.className = "modal-mask";
     mask.innerHTML = `<div class="modal" style="max-width:420px">
@@ -131,7 +131,7 @@ function confirmModal(msg, onOk, title) {
         <div class="modal-body">${h(msg)}</div>
         <div class="modal-foot">
             <button class="btn" onclick="this.closest('.modal-mask').remove()">取消</button>
-            <button class="btn danger" id="confirmOkBtn">确定</button>
+            <button class="btn danger" id="confirmOkBtn">${h(okText || "确定")}</button>
         </div>
     </div>`;
     document.body.appendChild(mask);
@@ -167,6 +167,21 @@ function soStatusBadge(st) {
     if (st === "shipped") return `<span class="badge green">已出货</span>`;
     if (st === "cancelled") return `<span class="badge red">已取消</span>`;
     return `<span class="badge orange">未出货</span>`;
+}
+/* v20260907f：销货订单待确认收到 计数/徽章/判定（红色圆形白字提示，点选确认收到后消失） */
+function soNeedsConfirm(o) {
+    return !!(o && o.status === "draft" && !o.received_at);
+}
+function unconfirmedSoCount() {
+    try { return DB.list("sales_orders").filter(o => soNeedsConfirm(o)).length; }
+    catch (e) { return 0; }
+}
+function soConfirmBadge(o) {
+    if (!soNeedsConfirm(o)) return "";
+    return `<span class="badge red" title="尚未点选「确认收到订单」，确认后才能出货">待确认收到</span>`;
+}
+function soStatusBadgeFull(o) {
+    return soStatusBadge(o.status) + (soNeedsConfirm(o) ? `<span style="display:block;margin-top:3px">${soConfirmBadge(o)}</span>` : "");
 }
 function poStatusBadge(st) {
     if (st === "received") return `<span class="badge green">已进货</span>`;
@@ -252,13 +267,16 @@ function renderShell(activeCode, contentHtml, breadcrumb) {
     const dark = localStorage.getItem("taiyuan_erp_dark") === "1";
 
     let menuHtml = "";
+    const soPending = unconfirmedSoCount(); // v20260907f：待确认收到的销货订单数（红色圆形白字）
     MENU.forEach(g => {
         const items = g.items.filter(it => can(it.perm));
         if (!items.length) return;
         const groupOpen = items.some(it => it.code === activeCode);
-        const links = items.map(it =>
-            `<a class="menu-link ${(it.code === activeCode) ? "active" : ""}" data-code="${it.code}" href="${it.hash}">${it.label}</a>`
-        ).join("");
+        const links = items.map(it => {
+            const badgeHtml = (it.code === "sales_orders" && soPending > 0)
+                ? `<span class="menu-badge" title="待确认收到的销货订单">${soPending > 99 ? "99+" : soPending}</span>` : "";
+            return `<a class="menu-link ${(it.code === activeCode) ? "active" : ""}" data-code="${it.code}" href="${it.hash}">${it.label}${badgeHtml}</a>`;
+        }).join("");
         menuHtml += `<div class="menu-group ${groupOpen ? "open" : ""}">
             <button class="menu-main" type="button" onclick="this.parentElement.classList.toggle('open')">
                 <span>${g.group}</span><b>▾</b>

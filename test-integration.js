@@ -113,7 +113,8 @@ async function closeModals(page) {
                 no: 'SO-INT-001', customer_id: c.id, customer_name: c.name,
                 order_date: '2026-08-21', status: 'draft', currency: 'CNY',
                 lines: [{ item_id: 'it_int1', code: 'INT-001', name: '联动测试商品', qty: 20, unit: '个', unit_price: 15, amount: 300 }],
-                invoice_amount: 300, received_amount: 0, payment_status: 'unpaid'
+                invoice_amount: 300, received_amount: 0, payment_status: 'unpaid',
+                received_at: '2026-08-21 09:00:00' // 直接落库的测试单须自带已确认标记，否则过不了出货门禁
             });
             DB.flush();
             return { id: so.id, no: so.no };
