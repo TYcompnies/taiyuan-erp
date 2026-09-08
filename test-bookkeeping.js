@@ -102,8 +102,8 @@ function check(cond, msg) {
   });
   check(frame.exists, 'iframe#bookkeepingFrame 存在');
   check(frame.src === BK_URL, `iframe src 为外挂记账网址（实际 ${frame.src}）`);
-  check(frame.title && frame.title.includes('外贸记账'), 'iframe title 正确');
-  check(frame.toolbar.includes('财务会计'), '工具栏标题「财务会计（41大叔外贸记账系统）」');
+  check(frame.title && frame.title.includes('财务会计'), 'iframe title 正确');
+  check(frame.toolbar.includes('财务会计'), '工具栏标题「财务会计」（不含品牌括注文字）');
   check(frame.crumb.includes('财务会计') && !frame.crumb.includes('进销存账款'), '面包屑「首页 / 财务会计」（不含进销存账款组）');
   check(frame.openHref === BK_URL && frame.openTarget === '_blank', '「新窗口打开」按钮指向同一网址且 target=_blank');
 
@@ -120,7 +120,11 @@ function check(cond, msg) {
   const hrefAcc = await menuHrefs();
   check(hrefAcc.includes('#/bookkeeping'), '会计账号菜单含外贸记账');
   await gotoHash('#/bookkeeping');
-  check((await bodyText()).includes('41大叔外贸记账系统'), '会计可打开外贸记账嵌入页');
+  const accFrame = await page.evaluate(() => ({
+    exists: !!document.getElementById('bookkeepingFrame'),
+    toolbar: document.querySelector('.bk-toolbar-info strong') ? document.querySelector('.bk-toolbar-info strong').textContent : ''
+  }));
+  check(accFrame.exists && accFrame.toolbar.includes('财务会计'), '会计可打开外贸记账嵌入页');
 
   // ========== 5. 业务角色无权限（不可见 + 直连被拒） ==========
   console.log('\n[5] 业务角色拒绝');

@@ -1,6 +1,6 @@
 /* =========================================================
- * 外贸记账财务系统（外挂嵌入页）
- * 「41大叔外贸记账系统」为独立部署的外部复式记账 SPA：
+ * 财务会计（外挂复式记账系统嵌入页）
+ * 外部系统为独立部署的复式记账 SPA：
  * - 免登录：开启即用，任何网域/装置开启即自动同步（MQTT 即时云同步，无需同步码）
  * - 独立云端帐本（凭证/科目/财务报表/损益图表/出口退税），与 ERP 本地数据完全隔离
  * - 本页仅负责在 ERP 框架内以 iframe 嵌入展示，不改动该系统任何逻辑
@@ -14,7 +14,7 @@ Pages.bookkeepingPage = function () {
     <div class="bk-embed">
         <div class="bk-toolbar">
             <div class="bk-toolbar-info">
-                <strong>财务会计（41大叔外贸记账系统）</strong>
+                <strong>财务会计</strong>
                 <span>免登录直接使用 · 凭证/科目/财务报表/损益图表 · MQTT 即时云同步（所有装置读写同一份云端帐本）</span>
             </div>
             <div class="bk-toolbar-actions">
@@ -22,7 +22,7 @@ Pages.bookkeepingPage = function () {
             </div>
         </div>
         <div class="bk-frame-wrap">
-            <iframe id="bookkeepingFrame" src="${BOOKKEEPING_URL}" title="41大叔外贸记账系统"
+            <iframe id="bookkeepingFrame" src="${BOOKKEEPING_URL}" title="财务会计"
                 referrerpolicy="no-referrer-when-downgrade" allow="clipboard-write"></iframe>
         </div>
     </div>`;
