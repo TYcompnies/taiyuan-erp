@@ -4,6 +4,8 @@
  */
 const { chromium } = require('playwright');
 const BASE = 'https://tycompnies.github.io/taiyuan-erp';
+// 出勤系统官方网址：ERP 一律内嵌线上最新版，设定变更/版本更新自动连动
+const ATTENDANCE_URL = 'https://tycompnies.github.io/attendance/';
 
 let pass = 0, fail = 0;
 const results = [];
@@ -70,13 +72,15 @@ async function gotoHash(page, hash) {
         await embed.waitFor({ timeout: 8000 });
     });
 
-    // ===== 4. iframe 加载出勤系统 =====
-    await test('线上 iframe 加载出勤系统', async () => {
+    // ===== 4. iframe 加载出勤系统（官方网址最新版） =====
+    await test('线上 iframe 加载出勤系统官方网址', async () => {
         await gotoHash(page, '#/attendance');
         await page.waitForSelector('#attendanceFrame', { timeout: 8000 });
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(4000);
+        const src = await page.locator('#attendanceFrame').getAttribute('src');
+        if (src !== ATTENDANCE_URL) throw new Error(`iframe src 不正确: ${src}`);
         const frames = page.frames();
-        const f = frames.find(fr => fr.url().includes('attendance/index.html'));
+        const f = frames.find(fr => (fr.url() || '').includes('tycompnies.github.io/attendance'));
         if (!f) throw new Error('找不到出勤 iframe frame');
         const title = await f.title();
         if (!title.includes('出勤')) throw new Error(`title 不含出勤: ${title}`);
@@ -85,8 +89,8 @@ async function gotoHash(page, hash) {
     // ===== 5. 出勤系统独立访问 =====
     await test('线上出勤系统独立访问正常', async () => {
         const p2 = await browser.newPage();
-        await p2.goto(BASE + '/attendance/index.html');
-        await p2.waitForSelector('.login-card', { timeout: 15000 });
+        await p2.goto(ATTENDANCE_URL);
+        await p2.waitForSelector('.login-card', { timeout: 20000 });
         const title = await p2.title();
         if (!title.includes('出勤')) throw new Error(`独立 title: ${title}`);
         await p2.close();
@@ -95,8 +99,8 @@ async function gotoHash(page, hash) {
     // ===== 6. 出勤系统独立登录 =====
     await test('线上出勤系统独立登录正常', async () => {
         const p2 = await browser.newPage();
-        await p2.goto(BASE + '/attendance/index.html');
-        await p2.waitForSelector('.login-card input', { timeout: 15000 });
+        await p2.goto(ATTENDANCE_URL);
+        await p2.waitForSelector('.login-card input', { timeout: 20000 });
         const inputs = await p2.locator('.login-card input').all();
         await inputs[0].fill('admin');
         await inputs[1].fill('admin123');
@@ -111,8 +115,8 @@ async function gotoHash(page, hash) {
     await test('线上 ERP iframe 内出勤系统登录', async () => {
         await gotoHash(page, '#/attendance');
         await page.waitForSelector('#attendanceFrame', { timeout: 8000 });
-        await page.waitForTimeout(2000);
-        const frame = page.frames().find(fr => fr.url().includes('attendance/index.html'));
+        await page.waitForTimeout(4000);
+        const frame = page.frames().find(fr => (fr.url() || '').includes('tycompnies.github.io/attendance'));
         if (!frame) throw new Error('找不到 iframe frame');
         await frame.waitForSelector('.login-card input', { timeout: 10000 });
         const inputs = await frame.locator('.login-card input').all();

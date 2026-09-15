@@ -4,6 +4,8 @@
  */
 const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8902';
+// 出勤系统官方网址：ERP 一律内嵌线上最新版，设定变更/版本更新自动连动
+const ATTENDANCE_URL = 'https://tycompnies.github.io/attendance/';
 
 let pass = 0, fail = 0;
 const results = [];
@@ -40,9 +42,9 @@ async function gotoHash(page, hash) {
 async function getFrame(page) {
     // 等待 iframe 加载
     await page.waitForSelector('#attendanceFrame', { timeout: 8000 });
-    await page.waitForTimeout(2000); // 等 iframe 内容加载
+    await page.waitForTimeout(4000); // 等远端 iframe 内容加载
     const frames = page.frames();
-    const f = frames.find(fr => fr.url().includes('attendance/index.html'));
+    const f = frames.find(fr => (fr.url() || '').includes('tycompnies.github.io/attendance'));
     if (!f) throw new Error('找不到出勤系统 iframe frame (frames: ' + frames.map(f => f.url()).join(', ') + ')');
     return f;
 }
@@ -84,12 +86,12 @@ async function getFrame(page) {
     });
 
     // ===== 3. iframe 存在且 src 正确 =====
-    await test('iframe 存在且指向 attendance/index.html', async () => {
+    await test('iframe 存在且指向出勤系统官方网址', async () => {
         await gotoHash(page, '#/attendance');
         const iframe = page.locator('#attendanceFrame');
         await iframe.waitFor({ timeout: 5000 });
         const src = await iframe.getAttribute('src');
-        if (!src || !src.includes('attendance/index.html'))
+        if (src !== ATTENDANCE_URL)
             throw new Error(`iframe src 不正确: ${src}`);
     });
 
@@ -153,8 +155,8 @@ async function getFrame(page) {
     await test('出勤系统独立访问正常（非 iframe）', async () => {
         const page2 = await browser.newPage();
         await page2.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r => (r.request().url().includes('github') ? r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }) : (r.request().method() === 'POST' ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' }) : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' }))).catch(() => { }));
-        await page2.goto(BASE + '/attendance/index.html');
-        await page2.waitForSelector('.login-card', { timeout: 8000 });
+        await page2.goto(ATTENDANCE_URL);
+        await page2.waitForSelector('.login-card', { timeout: 15000 });
         const title = await page2.title();
         if (!title.includes('出勤')) throw new Error(`独立访问 title 不含出勤: ${title}`);
         await page2.close();
@@ -163,8 +165,8 @@ async function getFrame(page) {
     // ===== 10. 出勤系统独立登录正常 =====
     await test('出勤系统独立登录功能正常', async () => {
         const page2 = await browser.newPage();
-        await page2.goto(BASE + '/attendance/index.html');
-        await page2.waitForSelector('.login-card input', { timeout: 8000 });
+        await page2.goto(ATTENDANCE_URL);
+        await page2.waitForSelector('.login-card input', { timeout: 15000 });
         const inputs = await page2.locator('.login-card input').all();
         await inputs[0].fill('admin');
         await inputs[1].fill('admin123');
@@ -181,8 +183,8 @@ async function getFrame(page) {
         if (!erpData) throw new Error('ERP 数据键不存在');
         // 在独立页面验证出勤数据键
         const page2 = await browser.newPage();
-        await page2.goto(BASE + '/attendance/index.html');
-        await page2.waitForTimeout(1000);
+        await page2.goto(ATTENDANCE_URL);
+        await page2.waitForTimeout(1500);
         const attData = await page2.evaluate(() => localStorage.getItem('attendance_system_db'));
         await page2.close();
         if (!attData) throw new Error('出勤数据键不存在');
@@ -199,7 +201,7 @@ async function getFrame(page) {
         await link.waitFor({ timeout: 5000 });
         const href = await link.getAttribute('href');
         const target = await link.getAttribute('target');
-        if (!href || !href.includes('attendance/index.html'))
+        if (!href || href !== ATTENDANCE_URL)
             throw new Error(`新窗口链接 href 不正确: ${href}`);
         if (target !== '_blank') throw new Error(`target 不是 _blank: ${target}`);
     });
