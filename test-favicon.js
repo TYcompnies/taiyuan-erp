@@ -1,10 +1,11 @@
 /**
- * test-favicon.js — 网页小图示（favicon）专项测试（2026-09-22）
+ * test-favicon.js — 品牌图示专项测试（2026-09-22）
  * 需求：
- *   将网页小图示更换为「钛沅 TY 品牌标志」——index.html 一律引用实体图标文件
- *   （favicon.ico / favicon-32x32.png / favicon-16x16.png / apple-touch-icon.png），
- *   且不得再残留旧的蓝色内联 SVG 图标。
- * 检查重点：引用存在 → 文件可访问 → 真的是图片且尺寸正确 → 浏览器实际抓得到。
+ *   1) 网页小图示更换为「钛沅 TY 品牌标志」——index.html 一律引用实体图标文件
+ *      （favicon.ico / favicon-32x32.png / favicon-16x16.png / apple-touch-icon.png），
+ *      且不得再残留旧的蓝色内联 SVG 图标。
+ *   2) 首页左上方（侧边栏品牌区）套用同一个标志（logo.png）。
+ * 检查重点：引用存在 → 文件可访问 → 真的是图片且尺寸正确 → 浏览器实际抓得到/渲染得出来。
  * 运行：BASE=<云端或本地 URL> node test-favicon.js
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:8904';
@@ -107,6 +108,41 @@ function pngSize(buf) {
             if (stat.ink < stat.total * 0.15) throw new Error(`墨色像素过少（${stat.ink}/${stat.total}），图标疑似空白`);
             if (stat.navy < 10) throw new Error(`未侦测到深蓝主色（navy=${stat.navy}）`);
             if (stat.orange < 1) throw new Error(`未侦测到橘色点缀（orange=${stat.orange}）`);
+        } finally { await browser.close(); }
+    });
+
+    /* ---------- 5. 首页左上方（侧边栏品牌区）套用同一个 TY 标志 ---------- */
+    await test('G8 logo.png 可访问且为 256x256 PNG（供侧边栏品牌区使用）', async () => {
+        const { buf, type } = await get('logo.png');
+        const s = pngSize(buf);
+        if (s.w !== 256 || s.h !== 256) throw new Error(`实际 ${s.w}x${s.h}`);
+        if (!/png/i.test(type)) throw new Error(`Content-Type 异常：${type}`);
+    });
+
+    await test('G9 首页左上方品牌区实际渲染 TY 标志（img 载入成功且非 0 尺寸）', async () => {
+        const { chromium } = require('playwright');
+        const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--disable-gpu', '--disable-software-rasterizer', '--disable-dev-shm-usage'] });
+        const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+        try {
+            // 拦掉云端同步，避免真实拉取/外推资料
+            await page.context().route(/textdb\.online|api\.github\.com|raw\.githubusercontent\.com/i, r =>
+                (r.request().method() === 'POST'
+                    ? r.fulfill({ status: 200, contentType: 'text/plain', body: '{}' })
+                    : r.fulfill({ status: 200, contentType: 'text/plain', body: 'key not found' })).catch(() => { }));
+            await page.goto(BASE);
+            await page.fill('input[name="username"]', 'admin');
+            await page.fill('input[name="password"]', 'admin123');
+            await page.click('button[type="submit"]');
+            await page.waitForSelector('.brand-logo img', { timeout: 15000 });
+            const info = await page.evaluate(async () => {
+                const img = document.querySelector('.brand-logo img');
+                if (!img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
+                const box = img.getBoundingClientRect();
+                return { src: img.getAttribute('src'), nw: img.naturalWidth, nh: img.naturalHeight, w: box.width, h: box.height };
+            });
+            if (!info.src.includes('logo.png')) throw new Error(`品牌区不是 logo.png：${info.src}`);
+            if (!info.nw || !info.nh) throw new Error('图片未实际载入（naturalWidth=0）');
+            if (info.w < 24 || info.h < 24) throw new Error(`渲染尺寸过小：${info.w}x${info.h}`);
         } finally { await browser.close(); }
     });
 

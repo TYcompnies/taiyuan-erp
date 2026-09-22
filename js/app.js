@@ -290,7 +290,7 @@ function renderShell(activeCode, contentHtml, breadcrumb) {
     shell.innerHTML = `<div class="erp-shell">
     <aside class="sidebar">
         <div class="brand">
-            <div class="brand-logo">${COMPANY.logoText}</div>
+            <div class="brand-logo"><img src="logo.png?v=20260922b" alt="${h(COMPANY.short)}标志"></div>
             <div>
                 <div class="brand-title">${COMPANY.short}</div>
                 <div class="brand-subtitle">ERP SYSTEM</div>
